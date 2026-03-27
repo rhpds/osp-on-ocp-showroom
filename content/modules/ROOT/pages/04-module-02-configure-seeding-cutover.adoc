@@ -1,0 +1,1128 @@
+= Module 2: Configure seeding and cutover workflow
+:source-highlighter: rouge
+:toc: macro
+:toclevels: 1
+
+toc::[]
+
+In Module 1, you validated that ACME Corp's migration infrastructure is production-ready. Now comes the critical test: proving that you can migrate VMs within the company's strict 2-4 hour maintenance windows.
+
+The key to meeting this requirement is a two-phase migration approach. Instead of performing the entire migration in a single maintenance window, you'll configure a workflow that separates data transfer (seeding) from final conversion (cutover). This allows you to copy most VM data while the source VM remains running, then perform only the final delta sync and conversion during an actual outage window.
+
+**Your goal in this module**: Configure and execute a minimal-downtime migration workflow that demonstrates ACME Corp can migrate production workloads with less than 15 minutes of actual downtime, even for multi-terabyte VMs.
+
+In this module, you'll create a test VM with Changed Block Tracking enabled, configure AAP job templates for both seeding and cutover phases, build a workflow with approval gates, and execute a complete two-phase migration.
+
+== Learning objectives
+
+By the end of this module, you'll be able to:
+
+* Create and configure virtual machines with VMware Changed Block Tracking (CBT) for incremental data synchronization
+* Configure Ansible Automation Platform job templates for VM seeding (incremental sync with no downtime)
+* Configure Ansible Automation Platform job templates for VM cutover (final sync and conversion with minimal downtime)
+* Build workflow job templates that combine seeding, approval gates, and cutover into automated migration processes
+* Execute two-phase migrations that separate data transfer from service outage windows
+* Validate migrated workloads and clean up resources
+
+== Section 1: Understanding two-phase migration strategy
+
+**Time estimate**: 5 minutes (reading)
+
+Before configuring the workflow, let's understand why a two-phase approach is essential for ACME Corp's requirements.
+
+=== The challenge: Large VMs and small maintenance windows
+
+**The problem**: Moving a large VM (for example, 5 TB at 1 Gbps network speed) can take many hours. Standard maintenance windows at ACME Corp are only 2-4 hours. Running a full migration in one window is impossible for large workloads or very risky for medium-sized ones.
+
+**Traditional approach failures**:
+
+* **Single-phase migration**: Copy all data + perform conversion in one window
+* **Required downtime**: 8-12 hours for typical enterprise VMs
+* **Business impact**: Extended outages unacceptable for production workloads
+* **Risk level**: High - any issue during migration extends the outage
+
+=== The solution: Data seeding with Changed Block Tracking
+
+A data-seeding strategy decouples virtual machine disk data transfer from service downtime. It transforms migration from a single-event risk into a multi-stage, controlled process using VMware's Changed Block Tracking (CBT).
+
+**Phase 1: Initial or incremental sync (repeatable, no impact)**
+
+* Performs disk copy using CBT; skips guest conversion
+* Source VM remains running; zero impact to the workload
+* Can be repeated multiple times across different maintenance windows
+* Each subsequent run copies only changed blocks since the last sync
+* Use: `cbt_sync: true`, `cutover: false`
+
+**Final phase: Cutover (single maintenance window, minimal impact)**
+
+* Performs final delta sync (optional) to capture changes since last seeding
+* Executes guest conversion (e.g., virtio drivers for Windows, cloud-init injection)
+* Source VM is powered off during conversion; tenant has an outage
+* Downtime reduced from hours to minutes (typically 10-15 minutes)
+* Use: `cbt_sync: true` (or `false` to skip delta sync), `cutover: true`
+
+=== Business benefits for ACME Corp
+
+**Before (traditional approach)**:
+
+* Migration window: 8-12 hours
+* Business impact: Extended outages for critical applications
+* Risk: High - all steps must succeed in single window
+* Scheduling: Difficult to obtain 12-hour maintenance windows
+
+**After (two-phase approach)**:
+
+* Seeding windows: Multiple 2-hour windows, zero production impact
+* Cutover window: 10-15 minutes of actual downtime
+* Risk: Low - seeding can be repeated if issues occur, rollback is simple
+* Scheduling: Easy to obtain brief maintenance windows
+
+**Result**: ACME Corp can migrate even the largest VMs within standard maintenance windows while maintaining business continuity.
+
+== Section 2: Create a test VM with Changed Block Tracking
+
+**Time estimate**: 10 minutes
+
+To demonstrate the two-phase workflow, you'll create a test virtual machine in vCenter with Changed Block Tracking (CBT) enabled. CBT is the VMware feature that allows incremental data synchronization.
+
+NOTE: In production migrations, you would enable CBT on existing VMs. For this lab, you're creating a new VM to demonstrate the capability without affecting actual workloads.
+
+=== Hands-on exercise: Create VM with CBT enabled
+
+**Prerequisites**: Bastion host SSH access
+
+==== Install the govc CLI tool
+
+From the bastion, install the `govc` command-line tool for VMware management:
+
+[source,bash, role=execute]
+----
+curl -L -o govc.tar.gz https://github.com/vmware/govmomi/releases/latest/download/govc_Linux_x86_64.tar.gz
+tar -xzf govc.tar.gz
+----
+
+==== Configure vCenter environment variables
+
+Set environment variables for vCenter authentication:
+
+[source,bash,subs="attributes", role=execute]
+----
+export GOVC_URL='{vcenter_console}'
+export GOVC_USERNAME='{vcenter_full_user}'
+export GOVC_PASSWORD='{vcenter_password}'
+export GOVC_INSECURE=true
+export GOVC_NETWORK='segment-migrating-to-ocpvirt'
+----
+
+==== Prepare VM configuration variables
+
+Set up variables for the new VM (run this command block first):
+
+[source,bash,subs="attributes", role=execute]
+----
+GUID='{guid}'
+PUBKEY_FILE="/home/lab-user/.ssh/{guid}key.pub"
+PUBKEY="$(< "$PUBKEY_FILE")"
+VM_SOURCE="haproxy-{guid}"
+VM_NAME="rhel4cbt-{guid}"
+----
+
+==== Create the VM with CBT enabled
+
+Create and configure the VM (run this command block second):
+
+[source,bash,subs="none", role=execute]
+----
+FOLDER="ocpvirt-$GUID"
+
+# Determine the datacenter from the source VM
+GOVC_DATACENTER=$(./govc find / -type m -name "$VM_SOURCE" | awk -F/ 'NF>1 {print $2; exit}')
+
+if [ -z "$GOVC_DATACENTER" ]; then
+  echo "Could not determine datacenter for VM source: $VM_SOURCE"
+  exit 1
+fi
+
+export GOVC_DATACENTER
+
+# Set datastore based on datacenter
+case "$GOVC_DATACENTER" in
+  RS01) export GOVC_DATASTORE='workload_share_kc7AL' ;;
+  RS00) export GOVC_DATASTORE='workload_share_QHFNI' ;;
+  *)
+    echo "Unsupported datacenter: $GOVC_DATACENTER"
+    exit 1
+    ;;
+esac
+
+# Prepare cloud-init user data
+USERDATA=$(printf '%s\n' \
+  '#cloud-config' \
+  'disable_root: false' \
+  'ssh_pwauth: true' \
+  '' \
+  'chpasswd:' \
+  '  list: |' \
+  '    root:redhat' \
+  '  expire: false' \
+  '' \
+  'ssh_authorized_keys:' \
+  "  - $PUBKEY" \
+)
+
+METADATA='{}'
+USERDATA_B64=$(printf "%s" "$USERDATA" | base64 | tr -d '\n')
+METADATA_B64=$(printf "%s" "$METADATA" | base64 | tr -d '\n')
+
+# Clone the VM from template
+./govc vm.clone -vm="$VM_SOURCE" -folder="$FOLDER" -on=false -annotation='Created for CBT migration demo' "$VM_NAME"
+
+# Enable Changed Block Tracking on the VM and its disk
+./govc vm.change -vm "$VM_NAME" -e="ctkEnabled=TRUE"
+./govc vm.change -vm "$VM_NAME" -e="scsi0:0.ctkEnabled=TRUE"
+
+# Inject cloud-init configuration
+./govc vm.change -vm "$VM_NAME" \
+  -e "guestinfo.userdata=${USERDATA_B64}" \
+  -e "guestinfo.userdata.encoding=base64" \
+  -e "guestinfo.metadata=${METADATA_B64}" \
+  -e "guestinfo.metadata.encoding=base64"
+
+# Power on the VM
+./govc vm.power -on "$VM_NAME"
+
+echo "VM $VM_NAME created successfully with CBT enabled"
+----
+
+**Expected output**:
+
+[source,bash,subs="attributes"]
+----
+VM rhel4cbt-{guid} created successfully with CBT enabled
+----
+
+==== Verify the VM is running
+
+Wait 1-2 minutes for the VM to boot, then verify:
+
+[source,bash,subs="attributes", role=execute]
+----
+./govc vm.info rhel4cbt-{guid}
+----
+
+**Expected output**: Look for `State: poweredOn`
+
+**What you've accomplished**:
+
+* ✓ Created a test VM cloned from an existing template
+* ✓ Enabled Changed Block Tracking at both VM and disk levels
+* ✓ Configured cloud-init for automated setup (SSH keys, root password)
+* ✓ Powered on the VM for migration testing
+
+**ACME Corp context**: CBT is the technology that makes minimal-downtime migrations possible. By enabling CBT on production VMs before migration, ACME Corp can perform incremental data syncs during low-impact maintenance windows.
+
+== Section 3: Configure the seeding job template
+
+**Time estimate**: 15 minutes
+
+The seeding job template performs incremental data synchronization while the source VM continues running. This is the phase that moves the bulk of the data with zero production impact.
+
+=== Hands-on exercise: Prepare seeding configuration
+
+==== Prepare the bastion environment
+
+Create a directory for migration variables:
+
+[source,bash, role=execute]
+----
+mkdir -p /home/lab-user/os-migrate-env
+----
+
+Configure OpenStack CLI access:
+
+[source,bash]
+----
+oc project openstack
+alias openstack="oc exec -t openstackclient -- openstack"
+----
+
+==== Retrieve OpenStack parameters
+
+Gather required IDs and endpoints:
+
+[source,bash, role=execute]
+----
+SECURITY_GROUP_ID=$(openstack security group list | awk '/ basic / {print $2}')
+PROJECT_ID=$(openstack project list | grep ' admin ' | awk '{print $2}')
+AUTH_URL=$(openstack endpoint list --service identity --interface public -c URL -f value)
+----
+
+Verify the variables are populated:
+
+[source,bash, role=execute]
+----
+echo "Security Group ID: $SECURITY_GROUP_ID"
+echo "Project ID: $PROJECT_ID"
+echo "Auth URL: $AUTH_URL"
+----
+
+**Expected output**: All three variables should contain values (not empty).
+
+==== Create the seeding configuration file
+
+Generate the seeding job variables file:
+
+[source,bash,subs="attributes", role=execute]
+----
+cat << EOF > /home/lab-user/os-migrate-env/os_migrate_for_aap_seeding.yaml
+os_migrate_tear_down: false
+runner_from_aee: true
+os_migrate_vmw_data_dir: /tmp/os-migrate
+copy_openstack_credentials_to_conv_host: false
+
+# Re-use already deployed Conversion Host
+already_deploy_conversion_host: true
+
+# Network configuration
+openstack_private_network: private
+
+# Security groups and flavor
+security_groups: ${SECURITY_GROUP_ID}
+use_existing_flavor: false
+
+# Network settings for OpenStack
+os_migrate_create_network_port: true
+copy_metadata_to_conv_host: true
+used_mapped_networks: false
+os_migrate_configure_network: true
+
+# VMs to migrate
+vms_list:
+  - rhel4cbt-{guid}
+
+# Phase 1: Incremental sync only (no cutover)
+cbt_sync: true
+cutover: false
+
+# VMware parameters
+vcenter_hostname: {vcenter_console}
+vcenter_username: {vcenter_full_user}
+vcenter_password: {vcenter_password}
+vcenter_datacenter: RS01
+
+# OpenStack authentication
+os_cloud_environ: demo.redhat.com
+dst_cloud:
+  auth:
+    auth_url: ${AUTH_URL}
+    username: admin
+    project_id: ${PROJECT_ID}
+    project_name: admin
+    user_domain_name: Default
+    password: openstack
+  region_name: regionOne
+  interface: public
+  insecure: true
+  identity_api_version: 3
+EOF
+----
+
+==== Verify the configuration file
+
+Review the generated configuration:
+
+[source,bash, role=execute]
+----
+cat /home/lab-user/os-migrate-env/os_migrate_for_aap_seeding.yaml
+----
+
+**Key variables to verify**:
+
+* `cbt_sync: true` - Enable Changed Block Tracking
+* `cutover: false` - Seeding phase only, no cutover
+* `vms_list` - Should contain `rhel4cbt-{guid}`
+
+=== Hands-on exercise: Create the seeding job template in AAP
+
+==== Access Ansible Automation Platform
+
+Use the *AAP Console* tab in Showroom to access the AAP console (or click the link below):
+
+{aap_controller_web_url}[Open AAP Console^]
+
+Login with:
+
+[cols="1,1", options="header"]
+|===
+| **Username** | `{aap_controller_admin_user}`
+| **Password** | `{aap_controller_admin_password}`
+|===
+
+==== Create the seeding job template
+
+1. Navigate to: **Automation Execution** → **Templates**
+2. Click **Create Template** → **Create Job Template**
+3. Configure the template with these parameters:
+
+**Name**: `VM Seeding (Incremental Sync)`
+
+**Job Type**: Run
+
+**Inventory**: `Conversion Host Inventory`
+
+**Project**: `vmware migration toolkit project`
+
+**Playbook**: `playbooks/migration.yml`
+
+**Execution Environment**: `VMware Migration toolkit execution environment`
+
+**Credentials**: `Bastion key`
+
+**Variables**: Toggle to **YAML** format, then copy and paste the entire content from:
+
+[source,bash, role=execute]
+----
+cat /home/lab-user/os-migrate-env/os_migrate_for_aap_seeding.yaml
+----
+
+4. Click **Create Job Template**
+
+==== Verify the seeding template
+
+1. Return to **Automation Execution** → **Templates**
+2. Locate **VM Seeding (Incremental Sync)**
+3. Verify the rocket icon is enabled (not greyed out)
+
+**What you've configured**:
+
+* ✓ Job template for incremental data sync (seeding phase)
+* ✓ CBT enabled for efficient delta transfers
+* ✓ Cutover disabled (source VM stays running)
+* ✓ All AAP dependencies properly linked
+
+**ACME Corp context**: This seeding template can be run multiple times during different 2-hour maintenance windows with zero production impact. Each run copies only the data that changed since the last sync.
+
+=== Section 3 verification checkpoint
+
+Before proceeding to Section 4, verify you can complete these tasks:
+
+**VM creation**:
+
+* [ ] Verify `govc` tool is installed: `./govc version`
+* [ ] Confirm VM is created: `./govc vm.info rhel4cbt-{guid}`
+* [ ] Verify VM state shows `poweredOn`
+
+**Configuration preparation**:
+
+* [ ] Configuration file exists: `ls -la /home/lab-user/os-migrate-env/os_migrate_for_aap_seeding.yaml`
+* [ ] File contains `cbt_sync: true`
+* [ ] File contains `cutover: false`
+* [ ] File contains correct VM name: `rhel4cbt-{guid}`
+
+**AAP configuration**:
+
+* [ ] Seeding job template exists in AAP Templates view
+* [ ] Template is linked to correct inventory, project, and execution environment
+* [ ] Extra variables are populated with seeding configuration
+* [ ] Rocket icon is enabled
+
+**If any checkpoint fails**, return to the relevant section and retry the steps. If issues persist, consult the Troubleshooting section.
+
+== Section 4: Configure the cutover job template
+
+**Time estimate**: 10 minutes
+
+The cutover job template performs the final data synchronization and guest conversion. This is the phase that requires a maintenance window with actual downtime (typically 10-15 minutes).
+
+=== Hands-on exercise: Create cutover configuration
+
+==== Generate the cutover configuration file
+
+The cutover configuration is nearly identical to seeding, with one critical difference: `cutover: true`.
+
+Create the cutover variables file:
+
+[source,bash,role=execute]
+----
+sed 's/cutover: false/cutover: true/' \
+  /home/lab-user/os-migrate-env/os_migrate_for_aap_seeding.yaml \
+  > /home/lab-user/os-migrate-env/os_migrate_for_aap_cutover.yaml
+----
+
+==== Verify the cutover configuration
+
+Review the generated file:
+
+[source,bash,role=execute]
+----
+cat /home/lab-user/os-migrate-env/os_migrate_for_aap_cutover.yaml | grep cutover
+----
+
+**Expected output**:
+
+```
+cutover: true
+```
+
+**Key difference**: `cutover: true` tells the migration toolkit to perform the final conversion and power off the source VM.
+
+=== Hands-on exercise: Create the cutover job template in AAP
+
+==== Create the cutover job template
+
+1. In AAP console, navigate to: **Automation Execution** → **Templates**
+2. Click **Create Template** → **Create Job Template**
+3. Configure the template with these parameters:
+
+**Name**: `VM Cutover (Final Cutover)`
+
+**Job Type**: Run
+
+**Inventory**: `Conversion Host Inventory`
+
+**Project**: `vmware migration toolkit project`
+
+**Playbook**: `playbooks/migration.yml`
+
+**Execution Environment**: `VMware Migration toolkit execution environment`
+
+**Credentials**: `Bastion key`
+
+**Variables**: Toggle to **YAML** format, then copy and paste the entire content from:
+
+[source,bash, role=execute]
+----
+cat /home/lab-user/os-migrate-env/os_migrate_for_aap_cutover.yaml
+----
+
+4. Click **Create Job Template**
+
+==== Verify the cutover template
+
+1. Return to **Automation Execution** → **Templates**
+2. Locate **VM Cutover (Final Cutover)**
+3. Click on the template name
+4. Scroll to **Extra Variables** section
+5. Verify `cutover: true` is present
+
+**What you've configured**:
+
+* ✓ Job template for final sync and conversion (cutover phase)
+* ✓ Cutover enabled (source VM will be powered off)
+* ✓ Same migration playbook as seeding (different variables control behavior)
+* ✓ All AAP dependencies properly linked
+
+**ACME Corp context**: This cutover template will be used during an actual maintenance window when the business has approved a brief outage. The seeding template (from Section 3) will have already transferred 95-99% of the data, so cutover completes quickly.
+
+=== Section 4 verification checkpoint
+
+Before proceeding to Section 5, verify you can complete these tasks:
+
+**Configuration files**:
+
+* [ ] Cutover file exists: `ls -la /home/lab-user/os-migrate-env/os_migrate_for_aap_cutover.yaml`
+* [ ] File contains `cutover: true`
+* [ ] File still contains `cbt_sync: true`
+* [ ] Both seeding and cutover files exist side-by-side
+
+**AAP configuration**:
+
+* [ ] Cutover job template exists in AAP Templates view
+* [ ] Template is linked to correct inventory, project, and execution environment
+* [ ] Extra variables contain `cutover: true`
+* [ ] Rocket icon is enabled
+
+**Conceptual understanding**:
+
+* [ ] Explain the difference between seeding (`cutover: false`) and cutover (`cutover: true`)
+* [ ] Explain why seeding can run multiple times but cutover runs once
+
+**If any checkpoint fails**, return to the relevant section and retry the steps. If issues persist, consult the Troubleshooting section.
+
+== Section 5: Build the workflow job template
+
+**Time estimate**: 10 minutes
+
+Now you'll combine the seeding and cutover templates into a workflow with an approval gate. This workflow simulates ACME Corp's real-world migration process across multiple maintenance windows.
+
+=== Understanding the workflow pattern
+
+The workflow chains two phases with an approval step:
+
+**Maintenance window 1 (no production impact)**:
+
+* Run the seeding job one or more times
+* Source VM stays up and running
+* Only disk data is copied via CBT
+* Can be repeated weekly to refresh data until cutover is scheduled
+
+**Approval gate**:
+
+* Designated user (change manager, application owner) approves that tenant is ready for outage
+* Confirms maintenance window has been communicated to stakeholders
+* Verifies rollback plan is in place
+
+**Maintenance window 2 (brief outage)**:
+
+* Run the cutover job
+* VM is converted and migrated
+* Tenant experiences 10-15 minutes of downtime
+* Migrated VM boots in OpenStack
+
+=== Hands-on exercise: Create the workflow
+
+==== Create the workflow job template
+
+1. In AAP console, navigate to: **Automation Execution** → **Templates**
+2. Click **Create Template** → **Create Workflow Job Template**
+3. Configure the workflow:
+
+**Name**: `VM Migration - Seeding and Cutover`
+
+**Inventory**: `Conversion Host Inventory`
+
+4. Click **Create Workflow Job Template**
+
+The workflow visualizer opens automatically.
+
+==== Add the seeding job node
+
+1. Click **Add Step** (or the **+** icon on the start node)
+2. Configure the node:
+   - **Node type**: Job Template
+   - **Job Template**: `VM Seeding (Incremental Sync)`
+   - **Description** (optional): "Incremental sync in maintenance window - no workload impact"
+3. Click **Next**
+4. Review and click **Finish**
+
+The seeding node is now connected to the Start node.
+
+==== Add the approval node
+
+1. Click the **3 vertical dots** (⋮) on the **VM Seeding (Incremental Sync)** node
+2. Select **Add Step and link**
+3. Configure the node:
+   - **Node type**: Approval
+   - **Name**: `Approve cutover`
+   - **Description**: "Confirm tenant is in maintenance window and ready for outage"
+   - **Convergence**: All (default)
+4. Click **Next**
+5. In the link configuration, ensure **Run on Success** is selected
+6. Click **Next**, then **Finish**
+
+The approval node is now linked after the seeding node.
+
+==== Add the cutover job node
+
+1. Click the **3 vertical dots** (⋮) on the **Approve cutover** node
+2. Select **Add Step and link**
+3. Configure the node:
+   - **Node type**: Job Template
+   - **Job Template**: `VM Cutover (Final Cutover)`
+   - **Description** (optional): "Final sync and conversion - tenant outage"
+4. Click **Next**
+5. Ensure **Run on Success** is selected
+6. Click **Next**, then **Finish**
+
+The cutover node is now linked after the approval node.
+
+==== Save the workflow
+
+1. Click **Save** in the workflow visualizer
+2. The workflow is complete: **Start** → **VM Seeding** → **Approval** → **VM Cutover** → **Success**
+
+**What you've built**:
+
+* ✓ Multi-phase workflow combining seeding and cutover
+* ✓ Approval gate ensuring human verification before cutover
+* ✓ Automated progression from data sync to final conversion
+* ✓ Production-ready migration process for ACME Corp
+
+**ACME Corp context**: This workflow pattern can be reused for all production migrations. Change the `vms_list` variable to migrate different workloads while maintaining the same controlled, multi-phase approach.
+
+== Section 6: Execute the seeding and cutover workflow
+
+**Time estimate**: 25 minutes (most time is waiting for jobs to complete)
+
+Now comes the moment of truth: executing the two-phase migration to prove ACME Corp can migrate VMs with minimal downtime.
+
+=== Hands-on exercise: Run the workflow
+
+==== Launch the workflow (first seeding run)
+
+1. Navigate to: **Automation Execution** → **Templates**
+2. Locate **VM Migration - Seeding and Cutover**
+3. Click the **rocket icon** 🚀 to launch the workflow
+4. The workflow starts executing
+
+==== Monitor the seeding job
+
+1. The **VM Seeding (Incremental Sync)** job runs first
+2. Click on the job to view live output
+3. Watch for key stages:
+   - Connecting to vCenter
+   - Retrieving VM metadata
+   - Transferring disk data to Conversion Host
+   - Creating Cinder volumes in OpenStack
+   - Syncing data via CBT
+
+**Expected duration**: 3-5 minutes
+
+TIP: You can see detailed progress in the job output. Look for messages about block transfer progress.
+
+==== Workflow pauses at approval
+
+Once the seeding job completes successfully:
+
+1. The workflow automatically pauses at the **Approve cutover** node
+2. You'll see the approval waiting in the workflow diagram
+
+**This simulates the waiting period between maintenance windows**. In production, the approval might wait days or weeks while you schedule the final cutover window with stakeholders.
+
+==== Run a second seeding (optional but recommended)
+
+To demonstrate that seeding can run multiple times:
+
+1. Navigate to: **Automation Execution** → **Templates**
+2. Locate **VM Migration - Seeding and Cutover**
+3. Click the **rocket icon** 🚀 again to launch a second workflow instance
+4. This second run simulates a refresh of the data before final cutover
+5. Wait for the seeding job to complete (2-3 minutes - faster because most data already transferred)
+6. The workflow pauses at approval again
+
+**What you're demonstrating**: Multiple seeding runs across different maintenance windows, refreshing the data each time with zero production impact.
+
+==== Approve the cutover
+
+Now approve the final cutover (simulating stakeholder approval for the outage window):
+
+1. Navigate to: **Automation Execution** → **Workflow Jobs**
+2. Locate one of the running **VM Migration - Seeding and Cutover** workflows (either one)
+3. Click on the workflow job
+4. You'll see the workflow diagram with the approval node highlighted
+5. Click on the **Approve cutover** node
+6. Click **Approve** button
+7. Optionally add a comment: "Approved for cutover - maintenance window confirmed with app team"
+8. Confirm the approval
+
+==== Monitor the cutover job
+
+After approval, the **VM Cutover (Final Cutover)** job starts automatically:
+
+1. Click on the job to view live output
+2. Watch for key stages:
+   - Final delta sync (only changes since last seeding)
+   - Guest conversion (driver injection, cloud-init setup)
+   - VM creation in OpenStack
+   - Network configuration
+
+**Expected duration**: 8-12 minutes
+
+**Critical observation**: The cutover completes much faster than a full migration would take because the seeding phase already transferred most of the data.
+
+==== Verify the workflow succeeded
+
+Once the cutover job completes:
+
+1. The workflow shows **Success** status
+2. All nodes (Seeding → Approval → Cutover) show green checkmarks
+3. The migrated VM should now exist in OpenStack
+
+**What you've accomplished**:
+
+* ✓ Executed a two-phase migration workflow
+* ✓ Demonstrated seeding with zero production impact
+* ✓ Simulated approval gates for change management compliance
+* ✓ Completed cutover with minimal downtime (10-15 minutes)
+* ✓ Proved ACME Corp can migrate VMs within standard maintenance windows
+
+== Section 7: Validate the migrated VM
+
+**Time estimate**: 5 minutes
+
+Verify the VM successfully migrated to OpenStack and is accessible.
+
+=== Hands-on exercise: Access the migrated VM
+
+==== Verify the VM exists in OpenStack
+
+From the bastion, check OpenStack server list:
+
+[source,bash,subs="attributes"]
+----
+openstack server list
+----
+
+**Expected output**: You should see `rhel4cbt-{guid}` in the list with status `ACTIVE`.
+
+==== Attach a floating IP
+
+Create and attach a floating IP for external access:
+
+[source,bash,subs="attributes"]
+----
+openstack floating ip create public
+----
+
+Note the floating IP address from the output (labeled `floating_ip_address`).
+
+Attach the floating IP to the migrated VM (replace `<FLOATING_IP>` with the IP from above):
+
+[source,bash,subs="attributes"]
+----
+openstack server add floating ip rhel4cbt-{guid} <FLOATING_IP>
+----
+
+==== Access the migrated VM via SSH
+
+Connect to the migrated VM:
+
+[source,bash,subs="attributes"]
+----
+ssh -i /home/lab-user/.ssh/{guid}key.pem root@<FLOATING_IP>
+----
+
+Password: `redhat` (if prompted)
+
+If successful, you're now logged into the VM running in OpenStack!
+
+==== Verify the VM configuration
+
+From inside the migrated VM, verify basic configuration:
+
+[source,bash]
+----
+hostname
+ip addr show
+df -h
+----
+
+**Expected observations**:
+
+* Hostname matches the VM name
+* Network interfaces are configured
+* Disk storage is accessible
+
+Type `exit` to disconnect from the VM and return to the bastion.
+
+**What you've validated**:
+
+* ✓ VM successfully migrated to OpenStack
+* ✓ VM is in ACTIVE state
+* ✓ Network connectivity works (floating IP accessible)
+* ✓ SSH access functional
+* ✓ VM configuration intact after migration
+
+**ACME Corp context**: You can now confidently report that the migration workflow successfully transferred a VM from VMware to OpenStack with minimal downtime, and the migrated workload is fully functional.
+
+== Section 8: Cleanup
+
+**Time estimate**: 3 minutes
+
+Clean up the test resources to prepare for future labs.
+
+=== Hands-on exercise: Remove migrated resources
+
+==== Delete the VM and volumes in OpenStack
+
+From the bastion, remove the migrated VM:
+
+[source,bash,subs="attributes", role=execute]
+----
+openstack server delete rhel4cbt-{guid}
+openstack volume delete rhel4cbt-{guid}-2000
+openstack port delete rhel4cbt-{guid}-NIC-0-VLAN-private
+----
+
+==== Delete the source VM in vCenter
+
+Remove the source VM from VMware:
+
+[source,bash,subs="attributes", role=execute]
+----
+./govc vm.destroy rhel4cbt-{guid}
+----
+
+**Expected output**: No errors (silent success).
+
+==== Verify cleanup
+
+Confirm resources are removed:
+
+[source,bash,subs="attributes", role=execute]
+----
+openstack server list | grep rhel4cbt-{guid}
+./govc vm.info rhel4cbt-{guid} 2>&1
+----
+
+**Expected output**: Both commands should return no results or "not found" errors.
+
+**What you've cleaned up**:
+
+* ✓ Migrated VM removed from OpenStack
+* ✓ Associated volumes and ports deleted
+* ✓ Source VM removed from vCenter
+* ✓ Lab environment ready for additional testing
+
+== Troubleshooting
+
+While executing the seeding and cutover workflow, you might encounter these issues:
+
+=== VM creation issues
+
+**Issue**: `govc vm.clone` fails with "template not found"
+
+**Solution**:
+
+1. Verify the source VM exists:
++
+[source,bash,subs="attributes", role=execute]
+----
+./govc find / -type m -name "haproxy-{guid}"
+----
+2. Ensure environment variables are set correctly:
++
+[source,bash, role=execute]
+----
+echo $GOVC_URL
+echo $GOVC_USERNAME
+----
+3. Verify vCenter connectivity:
++
+[source,bash, role=execute]
+----
+./govc about
+----
+
+**Issue**: VM creation succeeds but CBT is not enabled
+
+**Solution**:
+
+1. Verify CBT was enabled during creation:
++
+[source,bash,subs="attributes", role=execute]
+----
+./govc vm.info -e rhel4cbt-{guid} | grep ctkEnabled
+----
+2. If not enabled, manually enable it:
++
+[source,bash,subs="attributes", role=execute]
+----
+./govc vm.change -vm rhel4cbt-{guid} -e="ctkEnabled=TRUE"
+./govc vm.change -vm rhel4cbt-{guid} -e="scsi0:0.ctkEnabled=TRUE"
+----
+3. Power cycle the VM for changes to take effect:
++
+[source,bash,subs="attributes", role=execute]
+----
+./govc vm.power -off rhel4cbt-{guid}
+sleep 10
+./govc vm.power -on rhel4cbt-{guid}
+----
+
+=== AAP job template issues
+
+**Issue**: Seeding job fails with "authentication error" to vCenter
+
+**Solution**:
+
+1. Verify vCenter credentials in the extra variables
+2. Check that `vcenter_username` and `vcenter_password` are correctly populated
+3. Test vCenter connectivity from the bastion:
++
+[source,bash,subs="attributes"]
+----
+curl -k https://{vcenter_console}/ui/
+----
+4. Ensure credentials match your UserInfo variables
+
+**Issue**: Job fails with "Conversion Host unreachable"
+
+**Solution**:
+
+1. Verify Conversion Host is running:
++
+[source,bash, role=execute]
+----
+openstack server list | grep rhel-ch
+----
+2. Test SSH connectivity to Conversion Host:
++
+[source,bash,subs="attributes", role=execute]
+----
+ssh -i /home/lab-user/.ssh/{guid}key.pem cloud-user@{rhoso_conversion_host_ip} "echo Connected"
+----
+3. Check that `Bastion key` credential in AAP has correct SSH private key
+4. Verify inventory variable `ansible_host` points to correct Conversion Host IP
+
+**Issue**: Seeding job completes but no volume created in OpenStack
+
+**Solution**:
+
+1. Check job output for OpenStack authentication errors
+2. Verify `dst_cloud` credentials in extra variables are correct
+3. Test OpenStack connectivity from bastion:
++
+[source,bash, role=execute]
+----
+openstack server list
+----
+4. Check AAP job output for specific error messages about volume creation
+
+=== Workflow execution issues
+
+**Issue**: Workflow doesn't pause at approval node
+
+**Solution**:
+
+1. Verify the approval node is correctly linked in the workflow
+2. Check that "Run on Success" is selected for the link from Seeding to Approval
+3. Ensure approval node type is "Approval" (not "Job Template")
+4. Re-save the workflow and try again
+
+**Issue**: Cutover job fails after approval
+
+**Solution**:
+
+1. Check that `cutover: true` is set in cutover template extra variables
+2. Review job output for specific error messages
+3. Verify source VM still exists in vCenter:
++
+[source,bash,subs="attributes", role=execute]
+----
+./govc vm.info rhel4cbt-{guid}
+----
+4. Check that seeding completed successfully (volumes should exist in OpenStack before cutover)
+
+**Issue**: Workflow shows "Canceled" status
+
+**Solution**:
+
+1. Check if you accidentally clicked "Cancel" instead of "Approve"
+2. If approval timed out (default: 7 days), the workflow auto-cancels
+3. Re-run the workflow from the beginning
+4. When approval node appears, click it and select "Approve" (not "Deny" or "Cancel")
+
+=== Migration logs and diagnostics
+
+**Finding detailed migration logs**:
+
+**AAP job output**:
+
+1. Navigate to **Automation Execution** → **Jobs**
+2. Click on a failed job
+3. Review the full Ansible output for error details
+4. Look for sections like "TASK [role_name : task_name]" to identify failure points
+
+**Conversion Host logs**:
+
+For detailed nbdkit and data transfer logs:
+
+[source,bash,subs="attributes", role=execute]
+----
+ssh -i /home/lab-user/.ssh/{guid}key.pem cloud-user@{rhoso_conversion_host_ip}
+sudo -i
+ls -la /tmp/osm-nbdkit-rhel4cbt-{guid}-*.log
+less /tmp/osm-nbdkit-rhel4cbt-{guid}-*.log
+----
+
+**vCenter task logs**:
+
+For VMware-side issues:
+
+1. Access vCenter UI: {vcenter_console}
+2. Navigate to: Menu → Tasks & Events
+3. Filter by VM name: `rhel4cbt-{guid}`
+4. Review recent tasks for errors
+
+== Learning outcomes checkpoint
+
+Before completing this module, verify you can:
+
+**VM preparation**:
+
+* [ ] Create VMs with Changed Block Tracking enabled using `govc`
+* [ ] Verify CBT status on VMs
+* [ ] Understand why CBT is required for incremental sync
+
+**Job template configuration**:
+
+* [ ] Create seeding job templates with `cbt_sync: true, cutover: false`
+* [ ] Create cutover job templates with `cbt_sync: true, cutover: true`
+* [ ] Explain the difference between seeding and cutover configurations
+* [ ] Generate and validate migration variable files
+
+**Workflow creation**:
+
+* [ ] Build workflow job templates in AAP
+* [ ] Add job nodes to workflows
+* [ ] Add approval nodes to workflows
+* [ ] Link workflow nodes with success/failure conditions
+
+**Workflow execution**:
+
+* [ ] Launch workflow jobs
+* [ ] Monitor job progress and review output
+* [ ] Approve or deny approval nodes
+* [ ] Interpret workflow status and results
+
+**Validation and cleanup**:
+
+* [ ] Verify migrated VMs in OpenStack
+* [ ] Attach floating IPs and test connectivity
+* [ ] Clean up test resources after migration
+
+**Troubleshooting**:
+
+* [ ] Locate migration logs in AAP and Conversion Host
+* [ ] Diagnose common migration failures
+* [ ] Verify prerequisites before job execution
+
+If you can confidently complete all these tasks, you're ready to apply this knowledge to production migrations!
+
+== Module summary
+
+Excellent work! You've successfully configured and executed a two-phase migration workflow that demonstrates ACME Corp can migrate production VMs with minimal downtime.
+
+**What you accomplished**:
+
+* Created a test VM with Changed Block Tracking enabled for incremental data synchronization
+* Configured AAP job templates for both seeding (zero-downtime data transfer) and cutover (minimal-downtime conversion)
+* Built a production-ready workflow combining seeding, approval gates, and cutover
+* Executed a complete two-phase migration, demonstrating that large VMs can migrate within standard maintenance windows
+* Validated that migrated workloads are fully functional in OpenStack
+* Cleaned up test resources and prepared for future migrations
+
+**Key takeaways**:
+
+* Changed Block Tracking enables incremental data synchronization, allowing multiple seeding runs with zero production impact
+* Separating seeding from cutover reduces actual downtime from 8-12 hours to 10-15 minutes
+* Workflow automation in AAP provides repeatable, auditable migration processes with built-in approval gates for change management compliance
+* The same workflow pattern can be reused for all ACME Corp production migrations by adjusting the `vms_list` variable
+
+**Business impact for ACME Corp**:
+
+* ✓ Proved that production VMs can migrate within 2-4 hour maintenance windows (15 minutes of actual downtime)
+* ✓ Demonstrated repeatable, low-risk migration process with approval controls
+* ✓ Validated that migrated workloads function correctly in OpenStack environment
+* ✓ Established a foundation for migrating ACME Corp's 500+ VM estate away from VMware
+
+**Your deliverable to the CTO**:
+
+You can now confidently present a migration strategy to ACME Corp's CTO that:
+
+1. **Meets operational constraints**: Migrations fit within standard 2-4 hour maintenance windows
+2. **Minimizes risk**: Multiple seeding runs allow data validation before final cutover
+3. **Provides governance**: Approval gates ensure stakeholder sign-off before production outages
+4. **Scales to enterprise**: Workflow pattern applies to entire VM portfolio
+5. **Reduces costs**: Path to eliminating $2.4M in annual VMware licensing expenses
+
+**Next steps for ACME Corp**:
+
+* Begin pilot migrations of non-critical workloads to build team confidence
+* Document runbooks for common application tiers (web servers, databases, etc.)
+* Schedule seeding windows across multiple weeks to distribute network load
+* Plan final cutover windows aligned with business maintenance schedules
+* Scale to production migrations with confidence in the proven workflow
+
+Congratulations! You've demonstrated that ACME Corp has a viable path to hybrid cloud transformation.

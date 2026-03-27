@@ -1,0 +1,317 @@
+= Workshop conclusion
+:source-highlighter: rouge
+:toc: macro
+:toclevels: 1
+
+toc::[]
+
+Congratulations! You've completed the VMware to Red Hat hybrid cloud migration workshop. Over the past 90 minutes, you've validated that ACME Corp has a viable, production-ready path to eliminate VMware vendor lock-in and reduce infrastructure costs while maintaining operational continuity.
+
+Let's recap what you've accomplished and explore the next steps in ACME Corp's cloud transformation journey.
+
+== What you've learned
+
+This workshop equipped you with practical skills to migrate production workloads from VMware to Red Hat OpenStack Services on OpenShift using Ansible Automation Platform.
+
+=== Module 1: Infrastructure validation and workflow exploration
+
+**Skills gained**:
+
+* **Architecture understanding** - You can now explain the role of each component in the migration architecture (vCenter, Conversion Host, OpenStack, AAP) and how they work together to enable efficient VM migrations
+* **Infrastructure verification** - You validated pre-deployed migration components including the Conversion Host, OpenStack networks, security groups, and bastion access
+* **AAP navigation** - You explored Ansible Automation Platform configuration including credentials, inventories, execution environments, projects, and job templates
+* **Workflow comprehension** - You reviewed a complete migration job template and understood how extra variables control migration behavior
+
+**Business value demonstrated**:
+
+* Confirmed that migration infrastructure is production-ready and properly configured
+* Validated that the Red Hat solution uses enterprise-grade automation with centralized credential management and audit trails
+* Verified that all security and authentication components meet ACME Corp's operational requirements
+
+=== Module 2: Minimal-downtime migration implementation
+
+**Skills gained**:
+
+* **Changed Block Tracking** - You created VMs with CBT enabled and understand how incremental data synchronization enables minimal-downtime migrations
+* **Seeding configuration** - You configured AAP job templates for data seeding with zero production impact (cbt_sync: true, cutover: false)
+* **Cutover configuration** - You configured AAP job templates for final conversion with minimal downtime (cbt_sync: true, cutover: true)
+* **Workflow automation** - You built multi-phase workflows combining seeding, approval gates, and cutover into repeatable processes
+* **Migration execution** - You ran a complete two-phase migration, demonstrating that VMs can migrate within standard maintenance windows
+* **Validation and cleanup** - You verified migrated workloads in OpenStack and properly cleaned up test resources
+
+**Business value demonstrated**:
+
+* Proved that production VMs can migrate within 2-4 hour maintenance windows with only 10-15 minutes of actual downtime
+* Demonstrated repeatable, low-risk migration processes with approval controls for change management compliance
+* Validated that migrated workloads function correctly in the OpenStack environment
+* Established a foundation for migrating ACME Corp's 500+ VM estate away from VMware
+
+== Your presentation to the CTO
+
+You're now prepared to present a comprehensive migration strategy to ACME Corp's CTO. Here's what you can confidently report:
+
+=== Executive summary
+
+**Challenge**: ACME Corp faces unsustainable VMware licensing costs (300% increase post-Broadcom acquisition) and urgent need for vendor independence.
+
+**Solution validated**: Red Hat OpenStack Services on OpenShift with Ansible Automation Platform provides a production-ready migration path that meets all operational constraints.
+
+**Key findings**:
+
+* ✓ **Meets maintenance window requirements** - Migrations complete within standard 2-4 hour windows with only 10-15 minutes of actual downtime
+* ✓ **Minimizes risk** - Two-phase approach (seeding + cutover) allows data validation before final conversion, with simple rollback if needed
+* ✓ **Provides governance** - Workflow approval gates ensure stakeholder sign-off before production outages
+* ✓ **Scales to enterprise** - Same workflow pattern applies to entire 500+ VM portfolio
+* ✓ **Reduces costs** - Path to eliminating $2.4M in annual VMware licensing expenses
+
+=== Technical architecture
+
+**Migration infrastructure**:
+
+* **Source environment** - VMware vCenter with Changed Block Tracking enabled for incremental sync
+* **Target environment** - Red Hat OpenStack Services on OpenShift providing enterprise cloud infrastructure
+* **Automation layer** - Ansible Automation Platform orchestrating workflows with centralized management
+* **Data transfer** - Conversion Host architecture enables direct VMware-to-OpenStack transfer, eliminating controller bottlenecks
+
+**Why this architecture works**:
+
+The Conversion Host design allows VM data to stream directly from vCenter to OpenStack storage without routing through the automation controller. This reduces migration time by 60-75% compared to traditional approaches - the critical factor enabling migrations within ACME Corp's maintenance windows.
+
+=== Migration workflow
+
+**Phase 1 - Seeding (repeatable, zero downtime)**:
+
+* Run during low-impact maintenance windows
+* Source VM stays running - no production impact
+* CBT transfers only changed data on subsequent runs
+* Can be executed weekly to refresh data until cutover is scheduled
+
+**Phase 2 - Cutover (single window, 10-15 minutes)**:
+
+* Approval gate confirms stakeholder readiness
+* Final delta sync captures changes since last seeding
+* Guest conversion (driver injection, cloud-init setup)
+* VM boots in OpenStack environment
+
+**Result**: Data transfer decoupled from service downtime, transforming migration from 8-12 hour risk to 15-minute controlled process.
+
+=== Risk mitigation
+
+**Operational safeguards**:
+
+* **Approval gates** - Change management sign-off required before production outages
+* **Incremental validation** - Multiple seeding runs allow data verification before final cutover
+* **Rollback capability** - Source VM remains untouched until cutover confirmed successful
+* **Audit trails** - AAP provides complete logs of all migration activities
+* **Troubleshooting** - Comprehensive diagnostics available in AAP job output and Conversion Host logs
+
+**Success metrics**:
+
+* Pilot migration completed within 90-minute window (60 minutes seeding + 15 minutes cutover)
+* Migrated workload fully functional in OpenStack with network connectivity verified
+* Zero data loss or corruption during migration process
+
+== Recommended next steps for ACME Corp
+
+Based on the successful validation, here's the recommended migration roadmap:
+
+=== Phase 1: Pilot migrations (30-60 days)
+
+**Objectives**:
+
+* Build team confidence with non-critical workloads
+* Refine runbooks and troubleshooting procedures
+* Validate migration timing assumptions with production data
+
+**Actions**:
+
+1. **Select pilot candidates** - Choose 5-10 non-critical VMs representing different application tiers (web servers, application servers, databases)
+2. **Document baseline** - Capture current performance metrics, dependencies, and configurations
+3. **Execute migrations** - Run complete seeding and cutover workflows following the patterns learned in this workshop
+4. **Validate outcomes** - Verify functionality, performance, and integration with existing systems
+5. **Update runbooks** - Document lessons learned and refine procedures
+
+**Success criteria**:
+
+* 100% of pilot VMs successfully migrated within defined maintenance windows
+* All migrated workloads meet or exceed original performance baselines
+* Migration team confident in repeatable processes
+
+=== Phase 2: Application tier migrations (60-120 days)
+
+**Objectives**:
+
+* Scale migration workflows to application tiers
+* Establish production migration cadence
+* Build organizational confidence in the approach
+
+**Actions**:
+
+1. **Categorize VM portfolio** - Group ACME Corp's 500+ VMs by application tier, criticality, and dependencies
+2. **Create tier-specific templates** - Customize job templates and variables for different application types
+3. **Schedule seeding windows** - Distribute seeding across multiple weeks to manage network load
+4. **Coordinate cutover windows** - Align final cutovers with business-approved maintenance schedules
+5. **Execute tier migrations** - Begin with least critical tiers, progress to mission-critical applications
+
+**Recommended order**:
+
+1. Development and test environments (low risk, high learning value)
+2. Internal tools and supporting applications
+3. Production non-critical workloads
+4. Business-critical applications (after all processes validated)
+
+**Success criteria**:
+
+* 80%+ of VM portfolio migrated within 120-day window
+* Maintenance window compliance maintained (100% of migrations within 2-4 hour windows)
+* Business stakeholder satisfaction with minimal disruption
+
+=== Phase 3: Optimization and cost realization (120+ days)
+
+**Objectives**:
+
+* Complete remaining migrations
+* Optimize OpenStack resource utilization
+* Decommission VMware infrastructure
+
+**Actions**:
+
+1. **Complete final migrations** - Address any remaining edge cases or complex workloads
+2. **Right-size OpenStack resources** - Optimize VM flavors and storage based on actual usage
+3. **Implement cloud-native patterns** - Begin containerization journey for appropriate workloads
+4. **Decommission VMware** - Gracefully retire vCenter infrastructure and reclaim licenses
+5. **Document ROI** - Calculate actual cost savings and present to executive leadership
+
+**Expected outcomes**:
+
+* $2.4M annual cost savings from eliminated VMware licensing
+* Vendor independence achieved with 100% workloads on open hybrid cloud platform
+* Foundation established for future Kubernetes and container adoption
+
+== Additional resources and learning paths
+
+=== Official documentation
+
+**Red Hat OpenStack Services on OpenShift**:
+
+* link:https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0[RHOSO 18.0 Documentation^]
+* link:https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/html/migrating_vms_to_a_red_hat_openstack_services_on_openshift_deployment/index[VMware Migration Toolkit Guide^]
+* link:https://access.redhat.com/articles/1344173[Product Life Cycle^]
+
+**Ansible Automation Platform**:
+
+* link:https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6[AAP 2.6 Documentation^]
+* link:https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/automation_controller_user_guide/index[Automation Controller User Guide^]
+* link:https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/using_workflows/index[Workflows Guide^]
+
+**Red Hat OpenShift**:
+
+* link:https://docs.openshift.com/container-platform/latest/welcome/index.html[OpenShift Container Platform Documentation^]
+* link:https://docs.openshift.com/container-platform/latest/operators/understanding/olm-understanding-operatorhub.html[Operator Lifecycle Management^]
+
+=== Sample playbooks and code
+
+**VMware Migration Toolkit**:
+
+* link:https://github.com/pnavarro/vmware-migration-kit[Workshop Migration Playbooks^]
+* link:https://github.com/os-migrate/os-migrate[OS-Migrate Project (upstream)^]
+
+**Ansible Collections**:
+
+* link:https://docs.ansible.com/ansible/latest/collections/openstack/cloud/index.html[OpenStack Cloud Collection^]
+* link:https://docs.ansible.com/ansible/latest/collections/community/vmware/index.html[VMware Community Collection^]
+
+=== Certification paths
+
+**For Infrastructure Engineers**:
+
+* link:https://www.redhat.com/en/services/training/ex210-red-hat-certified-specialist-in-openstack-exam[Red Hat Certified Specialist in OpenStack (EX210)^]
+* link:https://www.redhat.com/en/services/training/ex280-red-hat-certified-specialist-in-openshift-application-development-exam[Red Hat Certified Specialist in OpenShift Application Development (EX280)^]
+* link:https://www.redhat.com/en/services/training/ex374-red-hat-certified-specialist-in-developing-automation-with-ansible-automation-platform-exam[Red Hat Certified Specialist in Ansible Automation (EX374)^]
+
+**For Architects**:
+
+* link:https://www.redhat.com/en/services/training/ex318-red-hat-certified-specialist-in-virtualization-exam[Red Hat Certified Specialist in Virtualization (EX318)^]
+* link:https://www.redhat.com/en/services/certification/rhca[Red Hat Certified Architect (RHCA)^]
+
+=== Community and support
+
+**Community resources**:
+
+* link:https://www.redhat.com/en/blog[Red Hat Blog^] - Product announcements and technical deep-dives
+* link:https://access.redhat.com/discussions[Red Hat Customer Portal Discussions^] - Peer support and best practices
+* link:https://stackoverflow.com/questions/tagged/openstack[Stack Overflow - OpenStack Tag^] - Technical Q&A
+
+**Professional support**:
+
+* link:https://access.redhat.com/support[Red Hat Customer Portal^] - Official support cases
+* link:https://www.redhat.com/en/services/consulting[Red Hat Consulting^] - Migration planning and execution assistance
+* link:https://www.redhat.com/en/services/training[Red Hat Training^] - Instructor-led courses and labs
+
+=== Upcoming workshops and events
+
+**Hands-on workshops**:
+
+* Red Hat OpenStack Administration (DO280)
+* Ansible Automation Platform Fundamentals (DO374)
+* Hybrid Cloud Infrastructure Management
+
+**Industry events**:
+
+* Red Hat Summit - Annual flagship conference
+* AnsibleFest - Automation-focused event
+* OpenInfra Summit - OpenStack community gathering
+
+== References
+
+This workshop drew upon the following sources:
+
+**Product documentation**:
+
+* Red Hat. "Red Hat OpenStack Services on OpenShift 18.0 Documentation". link:https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0[https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0^]. Accessed March 2026.
+
+* Red Hat. "Migrating VMs to a Red Hat OpenStack Services on OpenShift deployment". link:https://docs.redhat.com/en/documentation/red_hat_openstack_services_on_openshift/18.0/html/migrating_vms_to_a_red_hat_openstack_services_on_openshift_deployment/index[https://docs.redhat.com/.../migrating_vms.../index^]. Accessed March 2026.
+
+* Red Hat. "Ansible Automation Platform 2.6 Documentation". link:https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6[https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6^]. Accessed March 2026.
+
+* Red Hat. "OpenShift Container Platform Documentation". link:https://docs.openshift.com/container-platform/latest/welcome/index.html[https://docs.openshift.com/container-platform/latest/welcome/index.html^]. Accessed March 2026.
+
+**Technical resources**:
+
+* VMware. "Changed Block Tracking (CBT)". VMware vSphere Documentation. link:https://docs.vmware.com/en/VMware-vSphere/index.html[https://docs.vmware.com/en/VMware-vSphere/index.html^]. Accessed March 2026.
+
+* OpenStack Foundation. "OS-Migrate Project". link:https://github.com/os-migrate/os-migrate[https://github.com/os-migrate/os-migrate^]. Accessed March 2026.
+
+**Best practices**:
+
+* Red Hat. "Red Hat OpenStack Platform Life Cycle". link:https://access.redhat.com/articles/1344173[https://access.redhat.com/articles/1344173^]. Accessed March 2026.
+
+* Red Hat Consulting. "Cloud Migration Best Practices". Internal reference materials used with permission.
+
+== Final thoughts
+
+You've completed a comprehensive journey from validating migration infrastructure to executing production-ready workflows. The skills you've gained are immediately applicable to real-world migrations.
+
+**What makes this approach successful**:
+
+* **Business-focused** - Every technical decision ties back to ACME Corp's business requirements (cost reduction, vendor independence, operational continuity)
+* **Risk-mitigated** - Two-phase approach with approval gates transforms migration from high-risk event to controlled process
+* **Repeatable** - Workflow templates and automation ensure consistent execution across hundreds of VMs
+* **Enterprise-ready** - Integration with AAP provides governance, audit trails, and centralized management
+
+**Your competitive advantage**:
+
+Organizations worldwide face the same challenges ACME Corp does - unsustainable vendor lock-in and need for hybrid cloud flexibility. The migration skills you've developed position you to lead cloud transformation initiatives that deliver measurable business value.
+
+**The path forward**:
+
+Cloud migration is not just about moving VMs - it's about modernizing infrastructure to enable innovation. ACME Corp's journey doesn't end with migrating from VMware to OpenStack. The open hybrid cloud foundation you've helped establish enables future adoption of containers, Kubernetes, and cloud-native architectures.
+
+**Thank you** for participating in this workshop. We hope you found it valuable and wish you success in your migration journey.
+
+---
+
+**Workshop version**: 1.0
+**Last updated**: March 2026
+**Authors**: Red Hat Product Team
+**Feedback**: Contact your Red Hat account team or open an issue in the workshop repository

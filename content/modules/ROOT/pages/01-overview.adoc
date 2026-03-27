@@ -1,0 +1,99 @@
+= Workshop overview
+:toc:
+:toc-placement: preamble
+:icons: font
+
+== Your role and mission
+
+You're a Senior Infrastructure Engineer at ACME Corp, and you've been assigned to evaluate Red Hat's hybrid cloud migration strategy for an urgent business transformation project.
+
+ACME Corp is facing skyrocketing VMware licensing costs and an urgent need for vendor independence. After Broadcom's acquisition of VMware, annual licensing expenses have increased by 300%, putting severe pressure on IT budgets. Your CTO has made it clear: "We cannot sustain these costs. We need a viable migration path to open source cloud infrastructure that doesn't compromise our operational capabilities or create extended downtime for our business-critical applications."
+
+**Your assignment**: Evaluate and demonstrate the VMware to Red Hat OpenStack Services on OpenShift migration toolkit to prove that ACME Corp can successfully migrate production workloads without extended outages.
+
+**The objective**: Execute a complete migration workflow using Ansible Automation Platform, demonstrating that virtual machines can be migrated with minimal downtime through a two-phase seeding and cutover approach.
+
+== Success criteria for your mission
+
+By the end of this workshop, you'll have practical migration skills to address ACME Corp's urgent requirements:
+
+* **Understand migration architecture** → Comprehend the role of Conversion Hosts, AAP, and RHOSO in the migration process
+* **Navigate pre-deployed infrastructure** → Review and verify all migration components are properly configured
+* **Execute migration workflows** → Run complete VM migration jobs through Ansible Automation Platform
+* **Implement minimal-downtime migration** → Configure two-phase workflows that separate data seeding from final cutover
+* **Validate migration outcomes** → Verify migrated workloads function correctly in the OpenStack environment
+
+**Technical outcome**: Hands-on experience with production-grade VMware to OpenStack migration workflows using industry-standard automation tools.
+
+**Business benefit**: Demonstrate a viable path to eliminate vendor lock-in, reduce infrastructure costs by up to 60%, and maintain operational continuity during cloud migration.
+
+== Target audience
+
+This workshop is designed for:
+
+* **Infrastructure Engineers** who want hands-on experience with VMware to OpenStack migration
+* **VMware Administrators** looking to expand their skillset to open hybrid cloud platforms
+* **Cloud Architects** evaluating migration strategies and tooling
+* **Anyone** interested in practical experience with large-scale infrastructure migration automation
+
+== Prerequisites
+
+You should have:
+
+* Basic understanding of VMware vCenter and VM lifecycle management
+* Familiarity with OpenStack concepts (projects, networks, compute, storage)
+* Basic knowledge of Ansible and automation workflows
+* Experience with Linux command-line operations and SSH
+* Understanding of virtualization networking and storage concepts
+
+== ACME Corp's project challenges
+
+**The situation**: ACME Corp operates a VMware environment with over 500 production virtual machines supporting critical business applications. Post-Broadcom acquisition, licensing costs have become unsustainable, but the business cannot tolerate extended downtime for migration.
+
+**Project timeline**: 120 days to evaluate, pilot, and recommend a production migration strategy to the executive team.
+
+**Current challenges** (operational pain points):
+
+* **Vendor lock-in and cost escalation**: VMware licensing costs increased 300% post-acquisition → Annual infrastructure budget exceeded by $2.4M
+* **Limited maintenance windows**: Business-critical applications allow only 2-4 hour maintenance windows → Traditional migration approaches require 8-12 hours per workload
+* **Compliance and audit requirements**: Financial services regulations demand verified workload integrity → Migration must include comprehensive validation and rollback capability
+* **Skills gap and tooling complexity**: Existing team expertise is VMware-centric → Migration tooling must integrate with familiar workflows and require minimal new training
+
+**The opportunity**: Red Hat OpenStack Services on OpenShift with Ansible Automation Platform can address these challenges through automated workflows, incremental data seeding, and minimal-downtime cutover strategies.
+
+**Technical perspective**: "Red Hat's migration toolkit has proven effective in similar enterprise migrations, but I need to validate it works with our specific infrastructure, maintenance windows, and operational constraints before presenting it as a viable solution to leadership."
+
+== Your vision of success
+
+If the migration toolkit proves effective for ACME Corp's requirements, here are the potential improvements:
+
+**Immediate improvements** (30-90 days):
+
+* **Eliminate vendor lock-in** → Migrate pilot workloads to open source cloud platform → Reduce dependency on proprietary licensing
+* **Demonstrate minimal-downtime migration** → Execute seeding and cutover workflow → Prove workloads can migrate within 2-hour maintenance windows
+
+**Strategic benefits** (6-12 months):
+
+* **Reduce infrastructure costs** → Complete migration of 500+ VMs to RHOSO → Save $2.4M annually on licensing costs
+* **Improve operational flexibility** → Adopt container-ready infrastructure platform → Enable future Kubernetes and hybrid cloud initiatives
+* **Enhance automation capabilities** → Standardize on Ansible Automation Platform → Streamline infrastructure operations and reduce manual toil
+
+**Success metric**: Successfully migrate pilot workloads with less than 2 hours of downtime per VM, demonstrating a repeatable process that can be presented to executives as a viable alternative to continued VMware investment.
+
+== Common questions
+
+**"How long does a typical migration take?"**
+
+→ Module 1 will walk through the complete migration workflow, showing that basic migrations complete in 20-25 minutes. Module 2 demonstrates the two-phase approach where data seeding can occur during non-impact maintenance windows, with final cutover completing in under 15 minutes.
+
+**"What happens if a migration fails?"**
+
+→ The migration toolkit includes comprehensive validation and verification steps. Module 1's troubleshooting section covers log analysis and common failure scenarios. The source VM remains untouched until final cutover is confirmed successful.
+
+**"Can we test migrations without impacting production workloads?"**
+
+→ Module 2 demonstrates the seeding workflow, which copies VM data using VMware Changed Block Tracking while the source VM continues running. This allows you to test the migration process with zero impact to production workloads.
+
+**"How does this integrate with our existing Ansible automation?"**
+
+→ The migration toolkit is delivered as fully Ansible Automation Platform certified collection. Module 1 explores the AAP configuration, showing how migration workflows integrate with your existing automation platform and can be customized to your specific requirements.
