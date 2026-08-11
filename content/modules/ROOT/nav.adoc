@@ -36,7 +36,6 @@
 ** xref:migration_demo/02-details.adoc[Workshop Details]
 ** xref:migration_demo/access-to-aap.adoc[Access Your Lab Environment from your local machine]
 ** xref:migration_demo/03-module-01-prerequisites-migration-workflow.adoc[Prerequisites and Basic migration workflow]
-** xref:migration_demo/04-module-02-configure-seeding-cutover.adoc[Perform a Warm migration: Configure Seeding and Cutover Workflow]
 ** xref:migration_demo/05-conclusion.adoc[Workshop Conclusion]
 
 
@@ -47,4 +46,3 @@
 ** xref:migration_step_by_step/access-to-aap.adoc[Access Your Lab Environment from your local machine]
 ** xref:migration_step_by_step/ansible-builder.adoc[Building the RH OpenStack VMware Migration Toolkit Execution Environment]
 ** xref:migration_step_by_step/migrate-vm-with-aap.adoc[Launching a Migration using Ansible Automation Platform]
-** xref:migration_step_by_step/seeding-vm-in-maintenance-windows.adoc[Seeding a VM in maintenance windows using Ansible Automation Platform]
