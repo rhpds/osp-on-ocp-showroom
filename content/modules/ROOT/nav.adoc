@@ -26,11 +26,12 @@
 
 * xref:gitops/gitops.adoc[Install RHOSO using Gitops ArgoCD]
 ** xref:gitops/install-prereqs.adoc[Perform Prerequisite Operations for the control plane data plane]
-** xref:gitops/configure-vp.adoc[Configure Validated Patterns]
-** xref:gitops/secure.adoc[Configure Secure Access with External Secrets Operator and Kubernetes provider]
+** xref:gitops/prepare-operator-dependencies.adoc[Prepare RHOSO operator-dependencies with Validated Patterns]
+** xref:gitops/prepare-openstack-operator.adoc[Prepare RHOSO operators with Validated Patterns]
+** xref:gitops/prepare-secrets.adoc[Prepare RHOSO secrets with Validated Patterns]
+** xref:gitops/prepare-networks-gitops.adoc[Prepare the Network using Gitops]
 ** xref:gitops/prepare-controlplane-gitops.adoc[Prepare the Control Plane using Gitops]
 ** xref:gitops/prepare-data-plane-gitops.adoc[Prepare the Data Plane using Gitops]
-** xref:gitops/prepare-networks-gitops.adoc[Prepare the Network using Gitops]
 ** xref:gitops/deploy-rhoso-using-validatedpatterns.adoc[Deploy RHOSO using Validated Patterns]
 ** xref:gitops/access-gitops.adoc[Access OpenStack]
 

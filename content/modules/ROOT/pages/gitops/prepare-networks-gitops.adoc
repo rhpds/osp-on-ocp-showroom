@@ -2,11 +2,11 @@
 
 == Creating the initial overlay
 
-Change directory to your forked gitops repo, in your bastion:
+Change directory to your forked labrepo repo, in your bastion:
 
 [source,bash,role=execute]
 ----
-cd /home/lab-user/rhoso-gitops/gitops
+cd /home/lab-user/labrepo/gitops
 ----
 
 Create the environment directory store the managed cluster overlay configuration:
@@ -206,7 +206,46 @@ kustomize build environments/demo-env/networks/
 Commit the files created and push it to your github repo:
 [source,bash,role=execute]
 ----
-git add .
+git add environments/demo-env/networks/
 git commit -m "Base and demo-env environment networks"
+git push origin
+----
+
+== Configure the networks validated patterns section in the values-rhoso-gitops.yaml file
+
+On the bastion, in your forked pattern repository:
+
+[source,bash,role=execute]
+----
+cd /home/lab-user/rhoso-gitops
+----
+
+Edit `overrides/values-rhoso-gitops.yaml` so `networks` includes the
+dataplane environment overlay.
+
+[source,bash,role=execute]
+----
+vim overrides/values-rhoso-gitops.yaml
+----
+
+
+Replace the existing `networks` block with:
+
+WARNING: Replace $your_github_id with your GitHub ID.
+
+[source,yaml]
+----
+  openstack-networks:
+    repoURL: https://github.com/$your_github_id/osp-on-ocp-showroom
+    path: gitops/environments/demo-env/networks
+    targetRevision: main
+----
+
+Commit the files created and push them to your GitHub repo:
+
+[source,bash,role=execute]
+----
+git add overrides/values-rhoso-gitops.yaml
+git commit -m "Configure the networks validated patterns section in the values-rhoso-gitops.yaml file"
 git push origin
 ----

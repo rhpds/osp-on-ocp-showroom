@@ -1,5 +1,46 @@
 = Deploy RHOSO using Validated Patterns.
 
+== Make sure you don't have any pending git commits in the repository
+
+=== Lab repository
+
+[source,bash,role=execute]
+----
+cd /home/lab-user/labrepo
+git status
+----
+If you have any pending git commits, you need to commit them before continuing.
+[source,bash,role=execute]
+----
+git add .
+git commit -m "Final commit to update the lab repository"
+----
+
+Push the changes to the lab repository:
+[source,bash,role=execute]
+----
+git push origin
+----
+=== RHOSO GitOps repository
+
+[source,bash,role=execute]
+----
+cd /home/lab-user/rhoso-gitops
+git status
+----
+If you have any pending git commits, you need to commit them before continuing.
+[source,bash,role=execute]
+----
+git add .
+git commit -m "Final commit to update the RHOSO GitOps repository"
+----
+
+Push the changes to the RHOSO GitOps repository:
+[source,bash,role=execute]
+----
+git push origin
+----
+
 == Validate the prerequisites
 
 [source,bash,role=execute]
@@ -16,7 +57,7 @@ cd /home/lab-user/rhoso-gitops/
 ./pattern.sh make install
 ----
 
-== Access the OpenShift Gitops console
+== Access the OpenShift Gitops console to verify the deployment
 
 Extract the password from the admin user Secret:
 

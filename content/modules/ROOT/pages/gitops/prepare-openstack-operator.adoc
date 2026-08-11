@@ -1,0 +1,80 @@
+= Configure the openstack-operator validated patterns section in the values-rhoso-gitops.yaml file
+
+On the bastion, in your forked pattern repository:
+
+[source,bash,role=execute]
+----
+cd /home/lab-user/rhoso-gitops
+----
+
+Edit `overrides/values-rhoso-gitops.yaml` so `operator-dependencies` includes the
+community ESO component (and Argo annotations for CRD dry-run behaviour).
+
+[source,bash,role=execute]
+----
+vim overrides/values-rhoso-gitops.yaml
+----
+
+Add to the `applications` section the `openstack-operator` block with:
+
+[source,yaml]
+----
+  openstack-operator:
+    repoURL: https://github.com/openstack-k8s-operators/gitops
+    path: example/openstack-operator
+    targetRevision: v0.3.4
+    kustomize:
+      patches:
+        - target:
+            kind: OperatorGroup
+            name: openstack
+          patch: |-
+            apiVersion: operators.coreos.com/v1
+            kind: OperatorGroup
+            metadata:
+              name: openstack
+            $patch: delete
+        - target:
+            kind: Namespace
+            name: openstack
+          patch: |-
+            apiVersion: v1
+            kind: Namespace
+            metadata:
+              name: openstack
+            $patch: delete
+        - target:
+            kind: Namespace
+            name: openstack-operators
+          patch: |-
+            apiVersion: v1
+            kind: Namespace
+            metadata:
+              name: openstack-operators
+            $patch: delete
+        - target:
+            kind: Job
+            name: approve-openstack-installplan
+          patch: |-
+            [
+              {"op": "replace", "path": "/metadata/namespace", "value": "rhoso-gitops-standalone"},
+              {"op": "replace", "path": "/spec/template/spec/serviceAccountName", "value": "standalone-gitops-argocd-application-controller"}
+            ]
+        - target:
+            kind: ClusterRoleBinding
+            name: installplan-approver-binding
+          patch: |-
+            [
+              {"op": "replace", "path": "/subjects/0/name", "value": "standalone-gitops-argocd-application-controller"},
+              {"op": "replace", "path": "/subjects/0/namespace", "value": "rhoso-gitops-standalone"}
+            ]
+----
+
+Commit the files created and push them to your GitHub repo:
+
+[source,bash,role=execute]
+----
+git add overrides/values-rhoso-gitops.yaml
+git commit -m "Configure openstack-operator and openstack-operator-cr validated patterns section in the values-rhoso-gitops.yaml file"
+git push origin
+----

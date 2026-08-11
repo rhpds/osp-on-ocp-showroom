@@ -11,13 +11,14 @@ In this lab, you will use the following infrastructure:
 
 In this lab, you will cover the following topics:
 
-* xref:prereqs-gitops.adoc[Install the Operators prerequisites using OpenShift gitops]
-* xref:install-operators-gitops.adoc[Install the Red Hat OpenStack Platform Service Operators using OpenShift gitops]
-* xref:prepare-external-secrets-operator.adoc[Install External Secrets Operator (Kubernetes provider)]
-* xref:secure.adoc[Configure Secure Access with Vault and External Secrets]
-* xref:install-nfs-server.adoc[Install NFS server]
-* xref:deploy-control-plane-gitops.adoc[Deploy RHOSO control plane using OpenShift gitops]
-* xref:deploy-data-plane-gitops.adoc[Deploy RHOSO data plane using OpenShift gitops]
+* xref:install-prereqs.adoc[Perform Prerequisite Operations for the control plane data plane]
+* xref:configure-vp.adoc[Configure Validated Patterns]
+* xref:prepare-secrets.adoc[Prepare RHOSO secrets with Validated Patterns]
+* xref:secure.adoc[Configure Secure Access with External Secrets Operator and Kubernetes provider]
+* xref:prepare-controlplane-gitops.adoc[Prepare the Control Plane using Gitops]
+* xref:prepare-data-plane-gitops.adoc[Prepare the Data Plane using Gitops]
+* xref:prepare-networks-gitops.adoc[Prepare the Network using Gitops]
+* xref:deploy-rhoso-using-validatedpatterns.adoc[Deploy RHOSO using Validated Patterns]
 * xref:access-gitops.adoc[Access OpenStack]
 
 Within the lab environment, you will be able to copy and paste the specified commands into the CLI.
@@ -26,13 +27,14 @@ For some steps you may also need to edit some of the commands from the  instruct
 [IMPORTANT]
 The content presented in this guide is not officially supported by Red Hat. It is intended solely for exploratory purposes and to gather feedback that may inform potential future productization.
 
-== Fork the Lab Repository
+== Fork the Validated Patterns Repository and the lab repository
 
-Fork the GitHub repository into your personal GitHub space:
+Fork the following GitHub repositories into your personal GitHub space:
 
-https://github.com/validatedpatterns-sandbox/rhoso-gitops
+* https://github.com/validatedpatterns-sandbox/rhoso-gitops 
+* https://github.com/rhpds/osp-on-ocp-showroom
 
-Make sure you uncheck "Copy the main branch only" checkbox.
+Make sure you uncheck "Copy the main branch only" checkbox for both repositories.
 
 == Access Your Lab Environment
 
@@ -94,8 +96,9 @@ In the bastion, clone your forked repository to the bastion using SSH:
 [source,bash]
 ----
 cd
-git clone git@github.com:$your_github_id/rhoso-gitops.git rhoso-gitops
-cd rhoso-gitops
+git clone git@github.com:$your_github_id/osp-on-ocp-showroom labrepo
+git clone git@github.com:$your_github_id/rhoso-gitops rhoso-gitops
+cd labrepo
 ----
 
 *Be sure to review all commands carefully for both functionality and syntax!*

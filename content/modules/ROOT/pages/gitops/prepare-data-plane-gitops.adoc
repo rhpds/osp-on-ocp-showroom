@@ -8,7 +8,7 @@ Change directory to your forked gitops repo, in your bastion:
 
 [source,bash,role=execute]
 ----
-cd /home/lab-user/rhoso-gitops/gitops
+cd /home/lab-user/labrepo/gitops
 ----
 
 Create an environment directory to store the managed cluster overlay configuration:
@@ -140,7 +140,57 @@ kustomize build environments/demo-env/dataplane/
 Commit the files created and push it to your github repo:
 [source,bash,role=execute]
 ----
-git add .
+git add environments/demo-env/dataplane/
 git commit -m "Base and demo-env environment dataplane"
+git push origin
+----
+
+== Configure the dataplane validated patterns section in the values-rhoso-gitops.yaml file
+
+On the bastion, in your forked pattern repository:
+
+[source,bash,role=execute]
+----
+cd /home/lab-user/rhoso-gitops
+----
+
+Edit `overrides/values-rhoso-gitops.yaml` so `dataplane` includes the
+dataplane environment overlay.
+
+[source,bash,role=execute]
+----
+vim overrides/values-rhoso-gitops.yaml
+----
+
+
+Replace the existing `dataplane` block with:
+
+WARNING: Replace $your_github_id with your GitHub ID.
+
+[source,yaml]
+----
+  openstack-dataplane:
+    enabled: true
+    repoURL: https://github.com/$your_github_id/osp-on-ocp-showroom
+    path: gitops/environments/demo-env/dataplane
+    targetRevision: "main"
+    kustomize:
+      patches:
+        - target:
+            kind: Job
+            name: delete-services
+          patch: |-
+            [
+              {"op": "replace", "path": "/metadata/namespace", "value": "rhoso-gitops-standalone"},
+              {"op": "replace", "path": "/spec/template/spec/serviceAccountName", "value": "standalone-gitops-argocd-application-controller"}
+            ]
+----
+
+Commit the files created and push them to your GitHub repo:
+
+[source,bash,role=execute]
+----
+git add overrides/values-rhoso-gitops.yaml
+git commit -m "Configure the dataplane validated patterns section in the values-rhoso-gitops.yaml file"
 git push origin
 ----

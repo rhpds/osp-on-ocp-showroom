@@ -2,11 +2,11 @@
 
 == Creating the initial overlay
 
-Change directory to your forked gitops repo, in your bastion:
+Change directory to your forked labrepo repo, in your bastion:
 
 [source,bash,role=execute]
 ----
-cd /home/lab-user/rhoso-gitops/gitops
+cd /home/lab-user/labrepo/gitops
 ----
 
 The `base/controlplane` directory already consumes the upstream RHOSO controlplane catalog component (`openstack-k8s-operators/gitops`). In this chapter you create an environment overlay that patches that catalog default into the lab control plane.
@@ -23,14 +23,6 @@ mkdir -p environments/demo-env/controlplane
 cat > environments/demo-env/controlplane/kustomization.yaml <<'EOF'
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-transformers:
-  - |-
-    apiVersion: builtin
-    kind: NamespaceTransformer
-    metadata:
-      name: notImportantHere
-      namespace: cifmw-demo
-    unsetOnly: true
 resources:
   - controlplane-patches
 EOF
@@ -57,14 +49,6 @@ It starts from `base/controlplane` (the catalog controlplane component). Patches
 cat > environments/demo-env/controlplane/controlplane-patches/kustomization.yaml <<'EOF'
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-transformers:
-  - |-
-    apiVersion: builtin
-    kind: NamespaceTransformer
-    metadata:
-      name: notImportantHere
-      namespace: openstack
-    unsetOnly: true
 resources:
   - ../../../../base/controlplane
 EOF
@@ -723,7 +707,55 @@ Commit the files created and push them to your GitHub repo:
 
 [source,bash,role=execute]
 ----
-git add .
+git add environments/demo-env/controlplane/
 git commit -m "Base and demo-env environment controlplane"
+git push origin
+----
+
+== Configure the controlplane validated patterns section in the values-rhoso-gitops.yaml file
+
+On the bastion, in your forked pattern repository:
+
+[source,bash,role=execute]
+----
+cd /home/lab-user/rhoso-gitops
+----
+
+Edit `overrides/values-rhoso-gitops.yaml` so `controlplane` includes the
+controlplane environment overlay.
+
+[source,bash,role=execute]
+----
+vim overrides/values-rhoso-gitops.yaml
+----
+
+
+Replace the existing `controlplane` block with:
+
+WARNING: Replace $your_github_id with your GitHub ID.
+
+[source,yaml]
+----
+  openstack-controlplane:
+    repoURL: https://github.com/$your_github_id/osp-on-ocp-showroom
+    path: gitops/environments/demo-env/controlplane
+    targetRevision: main
+    kustomize:
+      patches:
+        - target:
+            kind: Job
+            name: ctlplane
+          patch: |-
+            [
+              {"op": "replace", "path": "/metadata/namespace", "value": "rhoso-gitops-standalone"},
+              {"op": "replace", "path": "/spec/template/spec/serviceAccountName", "value": "standalone-gitops-argocd-application-controller"}
+----
+
+Commit the files created and push them to your GitHub repo:
+
+[source,bash,role=execute]
+----
+git add overrides/values-rhoso-gitops.yaml
+git commit -m "Configure the controlplane validated patterns section in the values-rhoso-gitops.yaml file"
 git push origin
 ----
