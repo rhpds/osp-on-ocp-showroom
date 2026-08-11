@@ -150,10 +150,11 @@ vms_list:
   - winweb01-{guid}
 
 # VMware parameters:
-vcenter_hostname: {vcenter_console}
-vcenter_username: {vcenter_full_user}
-vcenter_password: {vcenter_password}
+vcenter_hostname: {fvmw_hostname}
+vcenter_username: {fvmw_vcenter_user}
+vcenter_password: {fvmw_vcenter_user_password}
 vcenter_datacenter: RS01
+local_disk_path: /local/disks
 
 os_cloud_environ: demo.redhat.com
 dst_cloud:

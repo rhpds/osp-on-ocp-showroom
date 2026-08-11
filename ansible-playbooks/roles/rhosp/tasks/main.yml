@@ -183,7 +183,7 @@
 - name: Clone repository on standalone
   tags: [standalone, install]
   ansible.builtin.git:
-    repo: https://github.com/rh-osp-demo/showroom_osp-on-ocp-day2.git
+    repo: https://github.com/rhpds/osp-on-ocp-showroom.git
     dest: ~/labrepo
     update: yes
   delegate_to: allinone
@@ -302,7 +302,7 @@
 - name: Clone repository on compute02
   tags: [compute02, install]
   ansible.builtin.git:
-    repo: https://github.com/rh-osp-demo/showroom_osp-on-ocp-day2.git
+    repo: https://github.com/rhpds/osp-on-ocp-showroom.git
     dest: ~/labrepo
     update: yes
   delegate_to: compute02
@@ -368,7 +368,7 @@
 - name: Clone repository on compute03
   tags: [compute03, install]
   ansible.builtin.git:
-    repo: https://github.com/rh-osp-demo/showroom_osp-on-ocp-day2.git
+    repo: https://github.com/rhpds/osp-on-ocp-showroom.git
     dest: ~/labrepo
     update: yes
   delegate_to: compute03

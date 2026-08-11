@@ -84,13 +84,13 @@ import_workloads_vmware_insecure: true
 import_workloads_openstack_insecure: true
 
 vms_list:
-  - haproxy-{guid}
+  - haproxy-{fvmw_vcenter_user}
 EOF
 ----
 
 [NOTE]
 
-In the *vms_list* we specify the list of VMs to be migrated in this example, we will migrate the virtual machine haproxy-{guid}
+In the *vms_list* we specify the list of VMs to be migrated in this example, we will migrate the virtual machine haproxy-{fvmw_vcenter_user}
 
 Get the project ID and authurl from the tenant we are executing the conversion:
 
@@ -106,10 +106,11 @@ And finally create the secrets files with :
 ----
 cat << EOF > /home/lab-user/os-migrate-env/secrets_demo_redhat_com.yaml
 # VMware parameters:
-vcenter_hostname: {vcenter_console}
-vcenter_username: {vcenter_full_user}
-vcenter_password: {vcenter_password}
+vcenter_hostname: {fvmw_hostname}
+vcenter_username: {fvmw_vcenter_user}
+vcenter_password: {fvmw_vcenter_user_password}
 vcenter_datacenter: RS01
+local_disk_path: /local/disks
 
 os_cloud_environ: demo.redhat.com
 dst_cloud:
@@ -134,7 +135,7 @@ Navigate to the the vcenter console: {vcenter_console} using username: {vcenter_
 
 image::ha-proxy-power-on.png[Ha-proxy-vm]
 
-Power on the virtual machine haproxy-{guid}
+Power on the virtual machine haproxy-{fvmw_vcenter_user}
 
 In the bastion, launch the migration:
 
@@ -191,7 +192,7 @@ openstack floating ip create public
 
 [source,bash,role=execute,subs=attributes]
 ----
-openstack server add floating ip haproxy-{guid} $FLOATING_IP_HA_PROXY
+openstack server add floating ip haproxy-{fvmw_vcenter_user} $FLOATING_IP_HA_PROXY
 ----
 
 . Sample Output
@@ -201,7 +202,7 @@ openstack server add floating ip haproxy-{guid} $FLOATING_IP_HA_PROXY
 +--------------------------------------+---------------+--------+-----------------------------------------+--------------------------+--------------------------+
 | ID                                   | Name          | Status | Networks                                | Image                    | Flavor                   |
 +--------------------------------------+---------------+--------+-----------------------------------------+--------------------------+--------------------------+
-| 77844fc9-1c83-4328-8995-3c9a008e8134 | haproxy-{guid} | ACTIVE | private=10.0.0.25, FLOATING_IP | N/A (booted from volume) | osm-vmware-haproxy-tztc2 |
+| 77844fc9-1c83-4328-8995-3c9a008e8134 | haproxy-{fvmw_vcenter_user} | ACTIVE | private=10.0.0.25, FLOATING_IP | N/A (booted from volume) | osm-vmware-haproxy-tztc2 |
 | 7fa1709c-4b6e-4adf-8098-f57a0ee43abd | centos10-ch    | ACTIVE | private=10.0.0.27, {rhoso_conversion_host_ip} | centos9-image            | migrate                  |
 +--------------------------------------+---------------+--------+-----------------------------------------+--------------------------+--------------------------+
 ----
@@ -220,5 +221,5 @@ Delete the virtual machine, before moving the next chapter.
 
 [source,bash,role=execute,subs=attributes]
 ----
-openstack server delete haproxy-{guid}
+openstack server delete haproxy-{fvmw_vcenter_user}
 ----

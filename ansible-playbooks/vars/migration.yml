@@ -29,11 +29,11 @@ redhat_automation_hub_token: ""
 # Migration Configuration
 migration_config_dir: "os-migrate-env"
 
-# VMware Configuration
+# fvmw / VMware Configuration
 # These should be provided in your inventory
-# The values below use the inventory variable names directly
-# vcenter_hostname, vcenter_username, vcenter_password, vcenter_datacenter
-# These variables are defined in your inventory file and used directly by templates
+# fvmw_hostname, fvmw_vcenter_user, fvmw_vcenter_user_password, vcenter_datacenter
+# local_disk_path (default /local/disks) — pre-staged VMDKs on the conversion host
+# These variables are defined in your inventory file and used by templates
 
 # Conversion Host Configuration
 # IP address of the OpenStack conversion host (typically the compute node)
@@ -52,7 +52,7 @@ conversion_host_dns: "8.8.8.8"
 
 # VMs to migrate (can be overridden in inventory or extra vars)
 vms_to_migrate:
-  - "haproxy-{{ guid }}"
+  - "haproxy-{{ fvmw_vcenter_user }}"
 
 # AAP API Configuration
 # Set to true to configure AAP automatically via API (recommended)

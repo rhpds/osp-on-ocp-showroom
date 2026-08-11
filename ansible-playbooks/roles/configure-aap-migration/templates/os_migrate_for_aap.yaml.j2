@@ -25,12 +25,14 @@ used_mapped_networks: false
 os_migrate_configure_network: true
 
 vms_list:
-  - haproxy-{{ guid }}
+  - haproxy-{{ fvmw_vcenter_user }}
 
-# VMware parameters:
-vcenter_hostname: {{ vcenter_hostname }}
-vcenter_username: {{ vcenter_username }}
-vcenter_password: {{ vcenter_password }}
+local_disk_path: {{ local_disk_path | default('/local/disks') }}
+
+# VMware parameters (mapped from fvmw inventory vars):
+vcenter_hostname: {{ fvmw_hostname }}
+vcenter_username: {{ fvmw_vcenter_user }}
+vcenter_password: {{ fvmw_vcenter_user_password }}
 vcenter_datacenter: {{ vcenter_datacenter }}
 
 os_cloud_environ: demo.redhat.com
