@@ -149,13 +149,13 @@ used_mapped_networks: false
 os_migrate_configure_network: true
 import_workloads_vmware_insecure: true
 vms_list:
-  - haproxy-{fvmw_vcenter_user}
+  - haproxy-{vcenter_full_user}
 
 # VMware parameters:
-vcenter_hostname: {fvmw_hostname}
-vcenter_username: {fvmw_vcenter_user}
-vcenter_password: {fvmw_vcenter_user_password}
-vcenter_datacenter: RS01
+vcenter_hostname: {vcenter_hostname}
+vcenter_username: {vcenter_full_user}
+vcenter_password: {vcenter_password}
+vcenter_datacenter: {vcenter_datastore}
 local_disk_path: /local/disks
 
 os_cloud_environ: demo.redhat.com
@@ -203,7 +203,7 @@ From the bastion, attach a floating IP to the migrated virtual machine:
 [source,bash,role=execute]
 ----
 openstack floating ip create public
-openstack server add floating ip haproxy_{guid} {FLOATING_IP}
+openstack server add floating ip haproxy-{vcenter_full_user} {FLOATING_IP}
 ----
 
 From the bastion, ping to the migrated virtual machine:
@@ -217,9 +217,9 @@ ping {FLOATING_IP}
 
 [source,bash,role=execute,subs=attributes]
 ----
-openstack server delete haproxy_{guid}
-openstack volume delete haproxy_{guid}-2000
-openstack port delete haproxy_{guid}-NIC-0-VLAN-private
+openstack server delete haproxy-{vcenter_full_user}
+openstack volume delete haproxy-{vcenter_full_user}-202
+openstack port delete haproxy-{vcenter_full_user}-NIC-0-VLAN-private-202
 ----
 
 == Troubleshooting the Migration

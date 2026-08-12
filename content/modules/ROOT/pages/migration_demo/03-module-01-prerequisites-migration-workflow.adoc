@@ -379,13 +379,13 @@ os_migrate_configure_network: true
 
 # VMs to migrate
 vms_list:
-  - haproxy-{fvmw_vcenter_user}
+  - haproxy-{vcenter_full_user}
 
 # VMware parameters
-vcenter_hostname: {fvmw_hostname}
-vcenter_username: {fvmw_vcenter_user}
-vcenter_password: {fvmw_vcenter_user_password}
-vcenter_datacenter: RS01
+vcenter_hostname: {vcenter_hostname}
+vcenter_username: {vcenter_full_user}
+vcenter_password: {vcenter_password}
+vcenter_datacenter: {vcenter_datastore}
 local_disk_path: /local/disks
 
 # OpenStack authentication
@@ -408,8 +408,8 @@ dst_cloud:
 **Key variables explained**:
 
 * **vms_list**: Array of VM names to migrate from VMware
-* **vcenter_hostname**: fvmw server address (`{fvmw_hostname}`)
-* **vcenter_username/password**: Credentials for accessing fvmw
+* **vcenter_hostname**: vCenter server address (`{vcenter_hostname}`)
+* **vcenter_username/password**: Credentials for accessing vCenter
 * **local_disk_path**: Path to pre-staged VMDK disks on the conversion host (`/local/disks`)
 * **already_deploy_conversion_host**: `true` means we're using the pre-deployed Conversion Host
 * **openstack_private_network**: Target network name in OpenStack for migrated VMs
@@ -459,7 +459,7 @@ Let's actively verify the job template configuration through the AAP interface.
    - **Execution Environment**: Should show "VMware Migration toolkit execution environment"
    - **Credentials**: Should include "Bastion key"
 5. Scroll to the **Extra Variables** section
-6. Verify the `vms_list` variable contains: `haproxy-{fvmw_vcenter_user}`
+6. Verify the `vms_list` variable contains: `haproxy-{vcenter_full_user}`
 7. Return to the Templates list
 8. Check that the rocket icon is enabled (not greyed out)
 

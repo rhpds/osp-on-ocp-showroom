@@ -279,10 +279,10 @@ cbt_sync: true
 cutover: false
 
 # VMware parameters
-vcenter_hostname: {fvmw_hostname}
-vcenter_username: {fvmw_vcenter_user}
-vcenter_password: {fvmw_vcenter_user_password}
-vcenter_datacenter: RS01
+vcenter_hostname: {vcenter_hostname}
+vcenter_username: {vcenter_full_user}
+vcenter_password: {vcenter_password}
+vcenter_datacenter: {vcenter_datastore}
 local_disk_path: /local/disks
 
 # OpenStack authentication
@@ -854,7 +854,7 @@ While executing the seeding and cutover workflow, you might encounter these issu
 +
 [source,bash,subs="attributes", role=execute]
 ----
-./govc find / -type m -name "haproxy-{fvmw_vcenter_user}"
+./govc find / -type m -name "haproxy-{vcenter_full_user}"
 ----
 2. Ensure environment variables are set correctly:
 +

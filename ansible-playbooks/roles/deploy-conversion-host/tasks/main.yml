@@ -253,18 +253,18 @@
 
 - name: Download VMDK disks from fvmw to conversion host
   vars:
-    _disk_name: "{{ item | regex_replace('-' ~ fvmw_vcenter_user ~ '$', '') }}"
+    _disk_name: "{{ item | regex_replace('-' ~ vcenter_full_user ~ '$', '') }}"
     _local_disk_path: "{{ local_disk_path | default('/local/disks') }}"
   ansible.builtin.shell: |
     ssh -o StrictHostKeyChecking=no -i {{ ansible_env.HOME }}/.ssh/{{ lab_guid }}key.pem \
       cloud-user@{{ rhoso_conversion_host_ip }} \
       'sudo mkdir -p {{ _local_disk_path }} && \
-       sudo curl -sk -u {{ fvmw_vcenter_user }}:{{ fvmw_vcenter_user_password }} \
-         "https://{{ fvmw_hostname }}/folder/{{ item }}/{{ _disk_name }}.vmdk?dcPath=RS00&dsName=workloadshare" \
+       sudo curl -sk -u {{ vcenter_full_user }}:{{ vcenter_password }} \
+         "https://{{ vcenter_hostname }}/folder/{{ item }}/{{ _disk_name }}.vmdk?dcPath=RS00&dsName=workloadshare" \
          -o {{ _local_disk_path }}/{{ _disk_name }}.vmdk && \
        extent=$(sudo grep -a -oP "(?<=FLAT \")[^\"]+" {{ _local_disk_path }}/{{ _disk_name }}.vmdk) && \
-       sudo curl -sk -u {{ fvmw_vcenter_user }}:{{ fvmw_vcenter_user_password }} \
-         "https://{{ fvmw_hostname }}/folder/{{ item }}/${extent}?dcPath=RS00&dsName=workloadshare" \
+       sudo curl -sk -u {{ vcenter_full_user }}:{{ vcenter_password }} \
+         "https://{{ vcenter_hostname }}/folder/{{ item }}/${extent}?dcPath=RS00&dsName=workloadshare" \
          -o {{ _local_disk_path }}/${extent}'
   loop: "{{ vms_to_migrate }}"
   register: vmdk_download

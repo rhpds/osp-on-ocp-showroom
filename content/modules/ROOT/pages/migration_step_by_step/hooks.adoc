@@ -122,8 +122,9 @@ Set the GUID and read the public key (run this first):
 GUID='{guid}'
 PUBKEY_FILE="/home/lab-user/.ssh/{guid}key.pub"
 PUBKEY="$(< "$PUBKEY_FILE")"
-VM_SOURCE="haproxy-{fvmw_vcenter_user}"
+VM_SOURCE="haproxy-{vcenter_full_user}"
 VM_NAME="rhel4hooks-{guid}"
+EXPECTED_DC='{vcenter_datastore}'
 ----
 
 Create the VM with cloud-init and power it on (run this second):
@@ -142,7 +143,7 @@ fi
 export GOVC_DATACENTER
 
 case "$GOVC_DATACENTER" in
-  RS01) export GOVC_DATASTORE='workload_share_kc7AL' ;;
+  "$EXPECTED_DC") export GOVC_DATASTORE='workload_share_kc7AL' ;;
   RS00) export GOVC_DATASTORE='workload_share_QHFNI' ;;
   *)
     echo "Unsupported datacenter: $GOVC_DATACENTER"
@@ -250,10 +251,10 @@ vms_list:
 boot_script_path: /opt/os-migrate/scripts/firstboot.sh
 
 # VMware parameters:
-vcenter_hostname: {fvmw_hostname}
-vcenter_username: {fvmw_vcenter_user}
-vcenter_password: {fvmw_vcenter_user_password}
-vcenter_datacenter: RS01
+vcenter_hostname: {vcenter_hostname}
+vcenter_username: {vcenter_full_user}
+vcenter_password: {vcenter_password}
+vcenter_datacenter: {vcenter_datastore}
 local_disk_path: /local/disks
 
 os_cloud_environ: demo.redhat.com

@@ -29,9 +29,9 @@ redhat_automation_hub_token: ""
 # Migration Configuration
 migration_config_dir: "os-migrate-env"
 
-# fvmw / VMware Configuration
+# vCenter / VMware Configuration
 # These should be provided in your inventory
-# fvmw_hostname, fvmw_vcenter_user, fvmw_vcenter_user_password, vcenter_datacenter
+# vcenter_hostname, vcenter_full_user, vcenter_password, vcenter_datacenter
 # local_disk_path (default /local/disks) — pre-staged VMDKs on the conversion host
 # These variables are defined in your inventory file and used by templates
 
@@ -52,7 +52,7 @@ conversion_host_dns: "8.8.8.8"
 
 # VMs to migrate (can be overridden in inventory or extra vars)
 vms_to_migrate:
-  - "haproxy-{{ fvmw_vcenter_user }}"
+  - "haproxy-{{ vcenter_full_user }}"
 
 # AAP API Configuration
 # Set to true to configure AAP automatically via API (recommended)

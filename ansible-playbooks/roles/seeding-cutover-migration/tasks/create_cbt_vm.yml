@@ -1,7 +1,7 @@
 ---
 # Create a VM in VMware with CBT enabled and cloud-init guestinfo (per seeding-vm-in-maintenance-windows.adoc).
 # Uses community.vmware (pyvmomi) and govc for VM rename. Run on bastion.
-# Requires fvmw_hostname, fvmw_vcenter_user, fvmw_vcenter_user_password in inventory.
+# Requires vcenter_hostname, vcenter_full_user, vcenter_password in inventory.
 
 - name: Ensure PyVmomi is installed for community.vmware (CBT VM creation)
   ansible.builtin.pip:
@@ -39,9 +39,9 @@
 
 - name: Check if CBT VM already exists
   community.vmware.vmware_guest_info:
-    hostname: "{{ fvmw_hostname }}"
-    username: "{{ fvmw_vcenter_user }}"
-    password: "{{ fvmw_vcenter_user_password }}"
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_full_user }}"
+    password: "{{ vcenter_password }}"
     validate_certs: false
     datacenter: "{{ cbt_vm_datacenter }}"
     folder: "{{ cbt_vm_folder_effective }}"
@@ -65,8 +65,8 @@
       - -name={{ seeding_cutover_vms_list[0] }}
   environment:
     GOVC_URL: "{{ cbt_vm_govc_url }}"
-    GOVC_USERNAME: "{{ fvmw_vcenter_user }}"
-    GOVC_PASSWORD: "{{ fvmw_vcenter_user_password }}"
+    GOVC_USERNAME: "{{ vcenter_full_user }}"
+    GOVC_PASSWORD: "{{ vcenter_password }}"
     GOVC_INSECURE: "true"
   when: cbt_vm_info.failed | default(false) or (cbt_vm_info.instance | default({}) | length == 0)
   delegate_to: localhost
@@ -74,9 +74,9 @@
 
 - name: Enable CBT and set cloud-init guestinfo on CBT VM
   community.vmware.vmware_guest:
-    hostname: "{{ fvmw_hostname }}"
-    username: "{{ fvmw_vcenter_user }}"
-    password: "{{ fvmw_vcenter_user_password }}"
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_full_user }}"
+    password: "{{ vcenter_password }}"
     validate_certs: false
     datacenter: "{{ cbt_vm_datacenter }}"
     folder: "{{ cbt_vm_folder_effective }}"
@@ -99,9 +99,9 @@
 
 - name: Power on CBT VM
   community.vmware.vmware_guest:
-    hostname: "{{ fvmw_hostname }}"
-    username: "{{ fvmw_vcenter_user }}"
-    password: "{{ fvmw_vcenter_user_password }}"
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ vcenter_full_user }}"
+    password: "{{ vcenter_password }}"
     validate_certs: false
     datacenter: "{{ cbt_vm_datacenter }}"
     folder: "{{ cbt_vm_folder_effective }}"

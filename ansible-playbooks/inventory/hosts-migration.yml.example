@@ -23,12 +23,12 @@ all:
     registry_password: ""  # Long token starting with "eyJhbGciOiJSUzUxMiJ9..."
     
     # ========================================
-    # REQUIRED: fvmw (fake VMware) Configuration
+    # REQUIRED: vCenter Configuration
     # ========================================
-    # fvmw connection details for migration source / local disk staging
-    fvmw_hostname: "vcenter.example.com"                # fvmw hostname/IP
-    fvmw_vcenter_user: "administrator@vsphere.local"    # fvmw username
-    fvmw_vcenter_user_password: "changeme"              # fvmw password
+    # vCenter connection details for migration source / local disk staging
+    vcenter_hostname: "vcenter.example.com"             # vCenter hostname/IP
+    vcenter_full_user: "administrator@vsphere.local"    # vCenter username
+    vcenter_password: "changeme"                        # vCenter password
     vcenter_datacenter: "Datacenter"                    # vCenter datacenter name
     local_disk_path: "/local/disks"                     # Pre-staged VMDKs on conversion host
     

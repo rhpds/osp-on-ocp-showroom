@@ -55,13 +55,13 @@ all:
     registry_password: ""  # Long token starting with "eyJhbGciOiJSUzUxMiJ9..."
     
     # ========================================
-    # REQUIRED: fvmw (fake VMware) Configuration
+    # REQUIRED: vCenter Configuration
     # ========================================
-    # fvmw connection details for migration source / local disk staging
-    fvmw_hostname: {fvmw_hostname}
-    fvmw_vcenter_user: {fvmw_vcenter_user}
-    fvmw_vcenter_user_password: {fvmw_vcenter_user_password}
-    vcenter_datacenter: RS01
+    # vCenter connection details for migration source / local disk staging
+    vcenter_hostname: {vcenter_hostname}
+    vcenter_full_user: {vcenter_full_user}
+    vcenter_password: {vcenter_password}
+    vcenter_datacenter: {vcenter_datastore}
     local_disk_path: /local/disks
     
     # ========================================
