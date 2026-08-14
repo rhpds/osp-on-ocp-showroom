@@ -36,3 +36,49 @@ wget https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F
 tar -xvzf kustomize_v5.6.0_linux_amd64.tar.gz
 sudo cp kustomize /usr/local/bin/.
 ----
+
+== Allow the pattern Argo CD instance to manage cluster-scoped resources
+
+The RHOSO GitOps pattern deploys a second Argo CD instance in the
+`rhoso-gitops-standalone` namespace. By default, OpenShift GitOps only grants
+cluster-scoped privileges to the `openshift-gitops` instance. Without the
+following setting, child applications such as `operator-dependencies` fail with
+errors like `can not be managed when in namespaced mode`, and the OpenStack
+operator never installs.
+
+Patch 'openshift-operators' Subscription so the pattern namespace is treated as cluster-scoped.
+
+[source,bash,role=execute]
+----
+oc patch subscription openshift-gitops-operator -n openshift-operators --type=merge -p '{
+  "spec": {
+    "config": {
+      "env": [
+        {
+          "name": "ARGOCD_CLUSTER_CONFIG_NAMESPACES",
+          "value": "openshift-gitops,rhoso-gitops-standalone,imperative"
+        }
+      ]
+    }
+  }
+}'
+----
+
+Wait until the operator deployment picks up the new environment variable:
+
+[source,bash,role=execute]
+----
+oc set env deployment/openshift-gitops-operator-controller-manager \
+  -n openshift-operators --list | grep ARGOCD_CLUSTER_CONFIG_NAMESPACES
+----
+
+The output must include `rhoso-gitops-standalone`. If it still shows only
+`openshift-gitops`, restart the operator deployment and check again:
+
+[source,bash,role=execute]
+----
+oc rollout restart deployment/openshift-gitops-operator-controller-manager \
+  -n openshift-operators
+oc rollout status deployment/openshift-gitops-operator-controller-manager \
+  -n openshift-operators
+----

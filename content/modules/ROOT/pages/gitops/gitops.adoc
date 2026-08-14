@@ -1,4 +1,4 @@
-# Install and discover RHOSO using Gitops ArgoCD
+# Install RHOSO using Validated Patterns
 
 Welcome to the Red Hat OpenStack Services on OpenShift (RHOSO) lab instructions.
 These instructions will guide you through the installation of the next generation of Red Hat's OpenStack product onto an existing OpenShift Cluster utilizing a bastion host and a single host for the data plane.
@@ -12,12 +12,12 @@ In this lab, you will use the following infrastructure:
 In this lab, you will cover the following topics:
 
 * xref:install-prereqs.adoc[Perform Prerequisite Operations for the control plane data plane]
-* xref:configure-vp.adoc[Configure Validated Patterns]
+* xref:prepare-operator-dependencies.adoc[Prepare RHOSO operator-dependencies with Validated Patterns]
+* xref:prepare-openstack-operator.adoc[Prepare RHOSO operators with Validated Patterns]
 * xref:prepare-secrets.adoc[Prepare RHOSO secrets with Validated Patterns]
-* xref:secure.adoc[Configure Secure Access with External Secrets Operator and Kubernetes provider]
+* xref:prepare-networks-gitops.adoc[Prepare the Network using Gitops]
 * xref:prepare-controlplane-gitops.adoc[Prepare the Control Plane using Gitops]
 * xref:prepare-data-plane-gitops.adoc[Prepare the Data Plane using Gitops]
-* xref:prepare-networks-gitops.adoc[Prepare the Network using Gitops]
 * xref:deploy-rhoso-using-validatedpatterns.adoc[Deploy RHOSO using Validated Patterns]
 * xref:access-gitops.adoc[Access OpenStack]
 
@@ -66,19 +66,25 @@ eval "$(ssh-agent -s)"
 ssh-add ~/.ssh/{guid}key.pem
 ----
 
+If `~/.ssh/config` references a missing `IdentityFile` (for example
+`bastion_{guid}`) and `git push` later fails with `Permission denied
+(publickey)`, point that entry at the real key:
+
+[source,bash,role=execute,subs=attributes]
+----
+ln -sf ~/.ssh/{guid}key.pem ~/.ssh/bastion_{guid}
+----
+
 == Add the SSH Public Key to GitHub
 
 Copy the public key `~/.ssh/{guid}key.pub` from the bastion to your GitHub account:
 
 1. Copy the SSH public key to your clipboard.
-2. In the forked repository page, click on the *Settings* tab.
-3. In the *Security and quality* section, click *Deploy keys*.
-4. Click *Add deploy key*.
-5. In the *Title* field, add a descriptive label, such as `"bastion RHOSO gitops key"`.
+2. Once in your GitHub account page, click on your username in the top right corner and select *Settings*.
+3. In the *SSH and GPG keys* section, click *New SSH key*.
+4. In the *Title* field, add a descriptive label, such as `"bastion RHOSO gitops key"`.
+5. Paste the SSH public key into the *Key* field.
 6. Click *Add SSH key*.
-7. Paste the SSH public key into the *Key* field.
-8. Check the *Allow write access* checkbox.
-9. Click *Save*.
 
 == Set Your Repository URL
 
@@ -98,7 +104,6 @@ In the bastion, clone your forked repository to the bastion using SSH:
 cd
 git clone git@github.com:$your_github_id/osp-on-ocp-showroom labrepo
 git clone git@github.com:$your_github_id/rhoso-gitops rhoso-gitops
-cd labrepo
 ----
 
 *Be sure to review all commands carefully for both functionality and syntax!*

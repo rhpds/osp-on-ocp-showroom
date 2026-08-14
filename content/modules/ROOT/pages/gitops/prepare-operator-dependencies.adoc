@@ -14,7 +14,7 @@ Edit `overrides/values-rhoso-gitops.yaml` so `operator-dependencies` includes th
 vim overrides/values-rhoso-gitops.yaml
 ----
 
-Replace the existing `operator-dependencies` block with:
+Add the following block after the `applications` section:
 
 [source,yaml]
 ----

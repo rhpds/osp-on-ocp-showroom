@@ -21,14 +21,6 @@ mkdir -p environments/demo-env/networks
 cat > environments/demo-env/networks/kustomization.yaml <<EOF
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-transformers:
-  - |-
-    apiVersion: builtin
-    kind: NamespaceTransformer
-    metadata:
-      name: notImportantHere
-      namespace: cifmw-demo
-    unsetOnly: true
 resources:
   - networks-patches
 EOF
@@ -54,14 +46,6 @@ Create the *kustomization.yaml* for the demo-env environment overlay configurati
 cat > environments/demo-env/networks/networks-patches/kustomization.yaml <<EOF
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-transformers:
-  - |-
-    apiVersion: builtin
-    kind: NamespaceTransformer
-    metadata:
-      name: notImportantHere
-      namespace: openstack
-    unsetOnly: true
 resources:
   - ../../../../base/networks
 EOF
@@ -190,8 +174,8 @@ patches:
       name: osp-multi-nic-worker-ocp4-worker3
   - path: netconfig-patch.yaml
     target:
-      group: nmstate.io
-      version: v1
+      group: network.openstack.org
+      version: v1beta1
       kind: NetConfig
       name: openstacknetconfig
 

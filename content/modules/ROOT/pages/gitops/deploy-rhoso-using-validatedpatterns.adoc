@@ -50,6 +50,15 @@ cd /home/lab-user/rhoso-gitops/
 ./pattern.sh make show
 ----
 
+== Make sure the rendering of the Helm charts is successful
+
+[source,bash,role=execute]
+----
+helm template charts/all/rhoso-gitops/ -f overrides/values-rhoso-gitops.yaml  | less
+----
+
+If the rendering is successful, you will see the following output:
+
 == Launch RHOSO deployement using Validated Patterns
 
 [source,bash,role=execute]
@@ -57,19 +66,35 @@ cd /home/lab-user/rhoso-gitops/
 ./pattern.sh make install
 ----
 
-== Access the OpenShift Gitops console to verify the deployment
+== Access the pattern Argo CD console to verify the deployment
 
-Extract the password from the admin user Secret:
+The pattern deploys RHOSO through the standalone Argo CD instance in
+`rhoso-gitops-standalone`. Use that console to watch child applications such as
+`operator-dependencies`, `openstack-operator`, and `openstack-controlplane`.
+
+Extract the admin password:
 
 [source,bash,role=execute]
 ----
-argoPass=$(oc get secret/openshift-gitops-cluster -n openshift-gitops -o jsonpath='{.data.admin\.password}' | base64 -d)
+argoPass=$(oc get secret/standalone-gitops-cluster -n rhoso-gitops-standalone -o jsonpath='{.data.admin\.password}' | base64 -d)
 echo $argoPass
 ----
 
-Get the Route for the OpenShift Gitops/OpenShift GitOps server:
+Get the Route for the standalone GitOps server:
+
 [source,bash,role=execute]
 ----
-argoURL=$(oc get route openshift-gitops-server -n openshift-gitops -o jsonpath='{.spec.host}{"\n"}')
+argoURL=$(oc get route standalone-gitops-server -n rhoso-gitops-standalone -o jsonpath='{.spec.host}{"\n"}')
 echo $argoURL
 ----
+
+Confirm the applications are syncing:
+
+[source,bash,role=execute]
+----
+oc get applications -n rhoso-gitops-standalone
+----
+
+If an application reports `can not be managed when in namespaced mode`, return
+to xref:install-prereqs.adoc[the GitOps Operator cluster-scope prerequisite]
+and verify `ARGOCD_CLUSTER_CONFIG_NAMESPACES` includes `rhoso-gitops-standalone`.

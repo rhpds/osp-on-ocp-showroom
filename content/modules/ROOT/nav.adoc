@@ -24,7 +24,7 @@
 ** xref:updates/updates-access.adoc[Access OpenStack]
 ** xref:updates/update-rhoso.adoc[Update your RHOSO deployment to the latest version]
 
-* xref:gitops/gitops.adoc[Install RHOSO using Gitops ArgoCD]
+* xref:gitops/gitops.adoc[Install RHOSO using Validated Patterns]
 ** xref:gitops/install-prereqs.adoc[Perform Prerequisite Operations for the control plane data plane]
 ** xref:gitops/prepare-operator-dependencies.adoc[Prepare RHOSO operator-dependencies with Validated Patterns]
 ** xref:gitops/prepare-openstack-operator.adoc[Prepare RHOSO operators with Validated Patterns]

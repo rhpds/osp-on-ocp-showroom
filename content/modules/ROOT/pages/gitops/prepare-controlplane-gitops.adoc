@@ -647,14 +647,6 @@ Update `controlplane-patches/kustomization.yaml` so it applies every thematic pa
 cat > environments/demo-env/controlplane/controlplane-patches/kustomization.yaml <<'EOF'
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-transformers:
-  - |-
-    apiVersion: builtin
-    kind: NamespaceTransformer
-    metadata:
-      name: notImportantHere
-      namespace: openstack
-    unsetOnly: true
 resources:
   - ../../../../base/controlplane
 patches:
@@ -749,6 +741,7 @@ WARNING: Replace $your_github_id with your GitHub ID.
             [
               {"op": "replace", "path": "/metadata/namespace", "value": "rhoso-gitops-standalone"},
               {"op": "replace", "path": "/spec/template/spec/serviceAccountName", "value": "standalone-gitops-argocd-application-controller"}
+            ]
 ----
 
 Commit the files created and push them to your GitHub repo:
