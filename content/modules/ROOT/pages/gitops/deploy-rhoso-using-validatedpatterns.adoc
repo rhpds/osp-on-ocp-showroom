@@ -54,10 +54,8 @@ cd /home/lab-user/rhoso-gitops/
 
 [source,bash,role=execute]
 ----
-helm template charts/all/rhoso-gitops/ -f overrides/values-rhoso-gitops.yaml  | less
+helm template charts/all/rhoso-gitops/ -f overrides/values-rhoso-gitops.yaml
 ----
-
-If the rendering is successful, you will see the following output:
 
 == Launch RHOSO deployement using Validated Patterns
 
@@ -68,33 +66,42 @@ If the rendering is successful, you will see the following output:
 
 == Access the pattern Argo CD console to verify the deployment
 
-The pattern deploys RHOSO through the standalone Argo CD instance in
-`rhoso-gitops-standalone`. Use that console to watch child applications such as
-`operator-dependencies`, `openstack-operator`, and `openstack-controlplane`.
+Validated Patterns installs the RHOSO applications into the cluster (hub) Argo CD
+instance in the `openshift-gitops` namespace. Use that console to watch child
+applications such as `operator-dependencies`, `openstack-operator`, and
+`openstack-controlplane`.
+
+NOTE: The AppProject name `rhoso-gitops-standalone` refers to the Validated
+Patterns *clusterGroup*, not a separate Argo CD namespace. On this lab there is
+no `rhoso-gitops-standalone` namespace and no `standalone-gitops` Argo CD
+instance.
 
 Extract the admin password:
 
 [source,bash,role=execute]
 ----
-argoPass=$(oc get secret/standalone-gitops-cluster -n rhoso-gitops-standalone -o jsonpath='{.data.admin\.password}' | base64 -d)
+argoPass=$(oc get secret/openshift-gitops-cluster -n openshift-gitops -o jsonpath='{.data.admin\.password}' | base64 -d)
 echo $argoPass
 ----
 
-Get the Route for the standalone GitOps server:
+Get the Route for the GitOps server:
 
 [source,bash,role=execute]
 ----
-argoURL=$(oc get route standalone-gitops-server -n rhoso-gitops-standalone -o jsonpath='{.spec.host}{"\n"}')
+argoURL=$(oc get route openshift-gitops-server -n openshift-gitops -o jsonpath='{.spec.host}{"\n"}')
 echo $argoURL
 ----
+
+Open `https://$argoURL` in a browser and log in as `admin` with the password
+from the previous step.
 
 Confirm the applications are syncing:
 
 [source,bash,role=execute]
 ----
-oc get applications -n rhoso-gitops-standalone
+oc get applications -n openshift-gitops
 ----
 
 If an application reports `can not be managed when in namespaced mode`, return
 to xref:install-prereqs.adoc[the GitOps Operator cluster-scope prerequisite]
-and verify `ARGOCD_CLUSTER_CONFIG_NAMESPACES` includes `rhoso-gitops-standalone`.
+and verify `ARGOCD_CLUSTER_CONFIG_NAMESPACES` includes `openshift-gitops`.

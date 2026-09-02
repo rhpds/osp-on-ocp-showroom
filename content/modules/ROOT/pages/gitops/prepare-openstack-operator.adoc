@@ -7,18 +7,12 @@ On the bastion, in your forked pattern repository:
 cd /home/lab-user/rhoso-gitops
 ----
 
-Edit `overrides/values-rhoso-gitops.yaml` so `operator-dependencies` includes the
-community ESO component (and Argo annotations for CRD dry-run behaviour).
+Enable openstack-operator applications in the values-rhoso-gitops.yaml file:
 
 [source,bash,role=execute]
 ----
-vim overrides/values-rhoso-gitops.yaml
-----
-
-Add to the `applications` section the `openstack-operator` block with:
-
-[source,yaml]
-----
+cat >> overrides/values-rhoso-gitops.yaml <<'EOF'
+---
   openstack-operator:
     repoURL: https://github.com/openstack-k8s-operators/gitops
     path: example/openstack-operator
@@ -57,17 +51,18 @@ Add to the `applications` section the `openstack-operator` block with:
             name: approve-openstack-installplan
           patch: |-
             [
-              {"op": "replace", "path": "/metadata/namespace", "value": "rhoso-gitops-standalone"},
-              {"op": "replace", "path": "/spec/template/spec/serviceAccountName", "value": "standalone-gitops-argocd-application-controller"}
+              {"op": "replace", "path": "/metadata/namespace", "value": "openshift-gitops"},
+              {"op": "replace", "path": "/spec/template/spec/serviceAccountName", "value": "openshift-gitops-argocd-application-controller"}
             ]
         - target:
             kind: ClusterRoleBinding
             name: installplan-approver-binding
           patch: |-
             [
-              {"op": "replace", "path": "/subjects/0/name", "value": "standalone-gitops-argocd-application-controller"},
-              {"op": "replace", "path": "/subjects/0/namespace", "value": "rhoso-gitops-standalone"}
+              {"op": "replace", "path": "/subjects/0/name", "value": "openshift-gitops-argocd-application-controller"},
+              {"op": "replace", "path": "/subjects/0/namespace", "value": "openshift-gitops"}
             ]
+'EOF'
 ----
 
 Commit the files created and push them to your GitHub repo:

@@ -6,7 +6,7 @@ Change directory to your forked labrepo repo, in your bastion:
 
 [source,bash,role=execute]
 ----
-cd /home/lab-user/labrepo/gitops
+cd /home/lab-user/labrepo/
 ----
 
 Create the environment directory store the managed cluster overlay configuration:
@@ -204,25 +204,24 @@ On the bastion, in your forked pattern repository:
 cd /home/lab-user/rhoso-gitops
 ----
 
-Edit `overrides/values-rhoso-gitops.yaml` so `networks` includes the
-dataplane environment overlay.
+WARNING: Make sure to replace $your_github_id with your GitHub ID.
 
 [source,bash,role=execute]
 ----
-vim overrides/values-rhoso-gitops.yaml
+your_github_id=pnavarro
+echo $your_github_id
 ----
 
+Enable openstack-networks applications in the values-rhoso-gitops.yaml file:
 
-Replace the existing `networks` block with:
-
-WARNING: Replace $your_github_id with your GitHub ID.
-
-[source,yaml]
+[source,bash,role=execute]
 ----
+cat >> overrides/values-rhoso-gitops.yaml <<EOF
   openstack-networks:
     repoURL: https://github.com/$your_github_id/osp-on-ocp-showroom
     path: gitops/environments/demo-env/networks
     targetRevision: main
+EOF
 ----
 
 Commit the files created and push them to your GitHub repo:

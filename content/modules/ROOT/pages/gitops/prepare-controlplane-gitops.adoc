@@ -713,21 +713,19 @@ On the bastion, in your forked pattern repository:
 cd /home/lab-user/rhoso-gitops
 ----
 
-Edit `overrides/values-rhoso-gitops.yaml` so `controlplane` includes the
-controlplane environment overlay.
+WARNING: Make sure to replace $your_github_id with your GitHub ID.
 
 [source,bash,role=execute]
 ----
-vim overrides/values-rhoso-gitops.yaml
+your_github_id=pnavarro
+echo $your_github_id
 ----
 
+Enable openstack-controlplane applications in the values-rhoso-gitops.yaml file:
 
-Replace the existing `controlplane` block with:
-
-WARNING: Replace $your_github_id with your GitHub ID.
-
-[source,yaml]
+[source,bash,role=execute]
 ----
+cat >> overrides/values-rhoso-gitops.yaml <<EOF
   openstack-controlplane:
     repoURL: https://github.com/$your_github_id/osp-on-ocp-showroom
     path: gitops/environments/demo-env/controlplane
@@ -739,9 +737,10 @@ WARNING: Replace $your_github_id with your GitHub ID.
             name: ctlplane
           patch: |-
             [
-              {"op": "replace", "path": "/metadata/namespace", "value": "rhoso-gitops-standalone"},
-              {"op": "replace", "path": "/spec/template/spec/serviceAccountName", "value": "standalone-gitops-argocd-application-controller"}
+              {"op": "replace", "path": "/metadata/namespace", "value": "openshift-gitops"},
+              {"op": "replace", "path": "/spec/template/spec/serviceAccountName", "value": "openshift-gitops-argocd-application-controller"}
             ]
+EOF
 ----
 
 Commit the files created and push them to your GitHub repo:

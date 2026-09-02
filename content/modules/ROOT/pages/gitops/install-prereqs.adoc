@@ -39,14 +39,22 @@ sudo cp kustomize /usr/local/bin/.
 
 == Allow the pattern Argo CD instance to manage cluster-scoped resources
 
-The RHOSO GitOps pattern deploys a second Argo CD instance in the
-`rhoso-gitops-standalone` namespace. By default, OpenShift GitOps only grants
-cluster-scoped privileges to the `openshift-gitops` instance. Without the
-following setting, child applications such as `operator-dependencies` fail with
-errors like `can not be managed when in namespaced mode`, and the OpenStack
-operator never installs.
+Validated Patterns deploys the RHOSO applications through the cluster (hub) Argo
+CD instance in the `openshift-gitops` namespace. That instance must remain
+cluster-scoped so child applications can create cluster-level resources
+(CRDs, ClusterRoles, OperatorGroups, and so on). The Validated Patterns
+`imperative` namespace also needs cluster scope for helper Jobs.
 
-Patch 'openshift-operators' Subscription so the pattern namespace is treated as cluster-scoped.
+Without this setting, applications can fail with errors like
+`can not be managed when in namespaced mode`, and the OpenStack operator never
+installs.
+
+NOTE: The AppProject name `rhoso-gitops-standalone` is only a Validated Patterns
+*clusterGroup* / project label. This lab does **not** create a second Argo CD
+instance or a `rhoso-gitops-standalone` namespace.
+
+Patch the GitOps Operator Subscription so `openshift-gitops` and `imperative`
+are treated as cluster-scoped:
 
 [source,bash,role=execute]
 ----
@@ -56,7 +64,7 @@ oc patch subscription openshift-gitops-operator -n openshift-operators --type=me
       "env": [
         {
           "name": "ARGOCD_CLUSTER_CONFIG_NAMESPACES",
-          "value": "openshift-gitops,rhoso-gitops-standalone,imperative"
+          "value": "openshift-gitops,imperative"
         }
       ]
     }
@@ -72,8 +80,8 @@ oc set env deployment/openshift-gitops-operator-controller-manager \
   -n openshift-operators --list | grep ARGOCD_CLUSTER_CONFIG_NAMESPACES
 ----
 
-The output must include `rhoso-gitops-standalone`. If it still shows only
-`openshift-gitops`, restart the operator deployment and check again:
+The output must include `openshift-gitops` and `imperative`. If the variable is
+missing or incomplete, restart the operator deployment and check again:
 
 [source,bash,role=execute]
 ----

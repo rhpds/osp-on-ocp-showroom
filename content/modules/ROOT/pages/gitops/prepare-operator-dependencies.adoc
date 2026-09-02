@@ -34,8 +34,8 @@ applications:
             name: clean-observability
           patch: |-
             [
-              {"op": "replace", "path": "/metadata/namespace", "value": "rhoso-gitops-standalone"},
-              {"op": "replace", "path": "/spec/template/spec/serviceAccountName", "value": "standalone-gitops-argocd-application-controller"}
+              {"op": "replace", "path": "/metadata/namespace", "value": "openshift-gitops"},
+              {"op": "replace", "path": "/spec/template/spec/serviceAccountName", "value": "openshift-gitops-argocd-application-controller"}
             ]
 ----
 
