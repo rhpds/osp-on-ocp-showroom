@@ -743,7 +743,6 @@ patches. Without `ignoreDifferences`, you cannot eliminate that drift by editing
 lab patches above. Options: treat **Healthy** as success for the lab, export the
 reconciled CR from the cluster and align Git to that export, or use `ignoreDifferences`
 on the Argo Application.
-----
 
 Commit the files created and push them to your GitHub repo:
 

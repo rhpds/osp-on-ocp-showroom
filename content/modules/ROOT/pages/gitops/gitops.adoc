@@ -95,7 +95,7 @@ cat ~/.ssh/{guid}key.pub
 
 In the next chapter, we will refer to your forked repository using the variable: "$your_github_id", for example:
 
-[source,bash,subs=attributes]
+[source,bash,subs=attributes,role=execute]
 ----
 your_github_id=pnavarro
 ----
@@ -104,7 +104,7 @@ your_github_id=pnavarro
 
 In the bastion, clone your forked repository to the bastion using SSH:
 
-[source,bash]
+[source,bash,role=execute]
 ----
 cd
 git clone git@github.com:$your_github_id/osp-on-ocp-showroom labrepo
