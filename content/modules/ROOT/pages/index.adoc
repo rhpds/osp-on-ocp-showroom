@@ -7,7 +7,7 @@ You have the following RHOSO installation and day2 operations labs available:
 
 * xref:connected/connected.adoc[Install RHOSO using CDN - Connected environment]
 * xref:updates/updates.adoc[Install a previous version of RHOSO to update it to the latest]
-* xref:gitops/gitops.adoc[Install RHOSO using Gitops ArgoCD]
+* xref:gitops/gitops.adoc[Install RHOSO using Validated Patterns]
 
 You also have the following VMware to RHOSO VM migration labs available:
 
