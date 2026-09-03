@@ -6,7 +6,7 @@ Change directory to your forked labrepo repo, in your bastion:
 
 [source,bash,role=execute]
 ----
-cd /home/lab-user/labrepo/
+cd /home/lab-user/labrepo/gitops
 ----
 
 Create the environment directory store the managed cluster overlay configuration:
@@ -145,14 +145,9 @@ And add the patches to the kustomization.yaml file:
 vim environments/demo-env/networks/networks-patches/kustomization.yaml
 ----
 
-[source,bash,subs=attributes]
+[source,bash,subs=attributes,role=execute]
 ----
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-
-resources:
-  - ../../base/networks
-
+cat >> environments/demo-env/networks/networks-patches/kustomization.yaml <<EOF
 patches:
   - path: nnpc-patch-worker1.yaml
     target:
@@ -178,7 +173,7 @@ patches:
       version: v1beta1
       kind: NetConfig
       name: openstacknetconfig
-
+EOF
 ----
 
 Validate the base configuration can be generated with *kustomize build*:

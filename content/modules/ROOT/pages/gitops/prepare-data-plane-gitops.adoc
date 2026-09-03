@@ -40,20 +40,11 @@ kustomize build environments/demo-env/dataplane
 
 In the previous chapter, we used `patches` inside kustomize.yaml file. 
 
-In this chapter, we will learn how to put those `patches` into files instead.
-
-Edit the *kustomization.yaml* created in the previous step:
-
-[source,bash,role=execute]
-----
-vim environments/demo-env/dataplane/kustomization.yaml
-----
-
-And add the patches to add the *compute01* node: 
+First add the patches to add the *compute01* node: 
 
 [source,bash,subs=attributes,role=execute]
 ----
-cat >> environments/demo-env/dataplane/kustomization.yaml <<EOF
+cat >> environments/demo-env/dataplane/kustomization.yaml <<'EOF'
 patches:
   - path: patch-nodeset-ansible.yaml
     target:

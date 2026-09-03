@@ -7,17 +7,11 @@ On the bastion, in your forked pattern repository:
 cd /home/lab-user/rhoso-gitops
 ----
 
-Edit `overrides/values-rhoso-gitops.yaml` so `operator-dependencies` includes the operator-dependencies component.
+Add the following block after the `applications` section to the `values-rhoso-gitops.yaml` file:
 
-[source,bash,role=execute]
+[source,yaml,role=execute]
 ----
-vim overrides/values-rhoso-gitops.yaml
-----
-
-Add the following block after the `applications` section:
-
-[source,yaml]
-----
+cat >> overrides/values-rhoso-gitops.yaml <<'EOF'
 applications:
   operator-dependencies:
     repoURL: https://github.com/openstack-k8s-operators/gitops
@@ -37,6 +31,7 @@ applications:
               {"op": "replace", "path": "/metadata/namespace", "value": "openshift-gitops"},
               {"op": "replace", "path": "/spec/template/spec/serviceAccountName", "value": "openshift-gitops-argocd-application-controller"}
             ]
+EOF
 ----
 
 Commit the files created and push them to your GitHub repo:

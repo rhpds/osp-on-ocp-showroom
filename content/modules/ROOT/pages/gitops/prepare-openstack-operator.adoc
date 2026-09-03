@@ -12,7 +12,6 @@ Enable openstack-operator applications in the values-rhoso-gitops.yaml file:
 [source,bash,role=execute]
 ----
 cat >> overrides/values-rhoso-gitops.yaml <<'EOF'
----
   openstack-operator:
     repoURL: https://github.com/openstack-k8s-operators/gitops
     path: example/openstack-operator
