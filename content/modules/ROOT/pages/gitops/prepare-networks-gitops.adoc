@@ -140,14 +140,9 @@ EOF
 
 And add the patches to the kustomization.yaml file:
 
-[source,bash,role=execute]
-----
-vim environments/demo-env/networks/networks-patches/kustomization.yaml
-----
-
 [source,bash,subs=attributes,role=execute]
 ----
-cat >> environments/demo-env/networks/networks-patches/kustomization.yaml <<EOF
+cat >> environments/demo-env/networks/networks-patches/kustomization.yaml <<'EOF'
 patches:
   - path: nnpc-patch-worker1.yaml
     target:

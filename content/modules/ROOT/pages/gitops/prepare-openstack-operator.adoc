@@ -61,7 +61,7 @@ cat >> overrides/values-rhoso-gitops.yaml <<'EOF'
               {"op": "replace", "path": "/subjects/0/name", "value": "openshift-gitops-argocd-application-controller"},
               {"op": "replace", "path": "/subjects/0/namespace", "value": "openshift-gitops"}
             ]
-'EOF'
+EOF
 ----
 
 Commit the files created and push them to your GitHub repo:
