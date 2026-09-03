@@ -359,15 +359,9 @@ spec:
             spec:
               type: LoadBalancer
       schedulerServiceTemplate:
-        override:
-          service:
-            metadata:
-              annotations:
-                metallb.universe.tf/address-pool: internalapi
-                metallb.universe.tf/allow-shared-ip: internalapi
-                metallb.universe.tf/loadBalancerIPs: 172.17.0.89
-            spec:
-              type: LoadBalancer
+        customServiceConfig: ""
+        replicas: 1
+        resources: {}
       cellTemplates:
         cell0:
           cellDatabaseAccount: nova-cell0
@@ -500,17 +494,8 @@ spec:
                 type: LoadBalancer
         replicas: 1
       heatEngine:
-        override:
-          service:
-            internal:
-              metadata:
-                annotations:
-                  metallb.universe.tf/address-pool: internalapi
-                  metallb.universe.tf/allow-shared-ip: internalapi
-                  metallb.universe.tf/loadBalancerIPs: 172.17.0.89
-              spec:
-                type: LoadBalancer
         replicas: 1
+        resources: {}
       secret: osp-secret
   ironic:
     $patch: replace
@@ -520,7 +505,11 @@ spec:
       ironicAPI:
         replicas: 1
       ironicConductors:
-      - replicas: 1
+      - conductorGroup: ""
+        customServiceConfig: "# add your customization here"
+        replicas: 1
+        resources: {}
+        storageClass: ""
         storageRequest: 10G
       ironicInspector:
         replicas: 1
@@ -554,13 +543,16 @@ spec:
         secret: osp-secret
       logging:
         enabled: false
-        ipaddr: 172.17.0.89
         annotations:
           metallb.universe.tf/address-pool: internalapi
           metallb.universe.tf/allow-shared-ip: internalapi
           metallb.universe.tf/loadBalancerIPs: 172.17.0.89
         port: 10514
+        targetPort: 10514
         cloNamespace: openshift-logging
+        rsyslogQueueSize: 10000
+        rsyslogQueueType: linkedList
+        rsyslogRetries: 100
   swift:
     $patch: replace
     enabled: false
@@ -741,6 +733,16 @@ cat >> overrides/values-rhoso-gitops.yaml <<EOF
               {"op": "replace", "path": "/spec/template/spec/serviceAccountName", "value": "openshift-gitops-argocd-application-controller"}
             ]
 EOF
+----
+
+NOTE: After `./pattern.sh make install`, `openstack-controlplane` can show **OutOfSync**
+even when **Healthy** and **Setup complete**. Argo compares your Git manifest to the live
+`OpenStackControlPlane`; the OpenStack operator adds hundreds of defaulted fields
+(`apiTimeout`, `tls`, `passwordSelectors`, and so on) that are not in these thematic
+patches. Without `ignoreDifferences`, you cannot eliminate that drift by editing only the
+lab patches above. Options: treat **Healthy** as success for the lab, export the
+reconciled CR from the cluster and align Git to that export, or use `ignoreDifferences`
+on the Argo Application.
 ----
 
 Commit the files created and push them to your GitHub repo:

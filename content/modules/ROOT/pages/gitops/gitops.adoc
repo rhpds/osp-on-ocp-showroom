@@ -79,6 +79,11 @@ ln -sf ~/.ssh/{guid}key.pem ~/.ssh/bastion_{guid}
 
 Copy the public key `~/.ssh/{guid}key.pub` from the bastion to your GitHub account:
 
+[source,bash,role=execute,subs=attributes]
+----
+cat ~/.ssh/{guid}key.pub
+----
+
 1. Copy the SSH public key to your clipboard.
 2. Once in your GitHub account page, click on your username in the top right corner and select *Settings*.
 3. In the *SSH and GPG keys* section, click *New SSH key*.
