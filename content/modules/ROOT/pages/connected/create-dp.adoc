@@ -1,1 +1,63 @@
+[WARNING]
+====
+*RHOSO 19.0 beta — the data plane needs RHEL 10 nodes*
+
+Every RHOSO 19.0 image is built on RHEL 10 (`...-rhel10`), but the compute host
+in this lab environment is *RHEL 9.4*, subscribed to the
+`rhoso-18.0-for-rhel-9-x86_64-rpms` repositories in
+*files/osp-ng-dataplane-node-set-deploy.yaml*.
+
+A RHEL 9 node cannot run the 19.0 data plane. Until the lab environment ships a
+RHEL 10 compute host, use this track for the *control plane only* and treat the
+steps below as 18.0 content.
+
+When RHEL 10 computes are available, the node set also needs:
+
+* `rhc_release` and `rhc_repositories` switched to the RHEL 10 and
+  `rhoso-19.0-for-rhel-10-x86_64-rpms` equivalents;
+* the registry mirrors from *files/osp-ng-dataplane-19beta-registries.yaml*
+  merged into `nodeTemplate.ansible.ansibleVars` — see below;
+* quay credentials added to the `redhat-registry` secret, because the beta
+  images live in `quay.io/redhat_emp1`, not `registry.redhat.io`:
++
+[source,bash]
+----
+oc create secret generic redhat-registry \
+  --from-literal edpm_container_registry_logins='{"registry.redhat.io": {"<rh-user>": "<rh-token>"}, "quay.io": {"<quay-user>": "<quay-token>"}}' \
+  -n openstack
+----
++
+The quay entry can be omitted once the mirror repositories are public.
+====
+
+== Why the data plane needs its own mirror list
+
+The *ImageDigestMirrorSet* applied during operator installation only affects
+CRI-O on the OpenShift nodes. EDPM nodes are RHEL hosts running podman, so they
+resolve `registry.redhat.io/rhoso/...` on their own and would fail to pull the
+unpublished beta images.
+
+*files/osp-ng-dataplane-19beta-registries.yaml* carries the same mapping as the
+IDMS, expressed as the `edpm_podman_registries` Ansible variable (60 service
+images). edpm-ansible renders it to
+`/etc/containers/registries.conf.d/20-edpm-podman-registries.conf` on every EDPM
+node.
+
+Each image needs its own entry because the repository names differ on the two
+registries — `openstack-nova-compute-rhel10` upstream versus
+`openstack-nova-compute` in the mirror — so a single prefix rewrite of
+`registry.redhat.io/rhoso` would point at names that do not exist.
+
+To use it, merge the file's contents into the `ansibleVars` block of your
+`OpenStackDataPlaneNodeSet` before deploying:
+
+[source,bash]
+----
+# inspect the mappings
+head -20 osp-ng-dataplane-19beta-registries.yaml
+
+# then paste the edpm_podman_registries list under
+# spec.nodeTemplate.ansible.ansibleVars in your node set manifest
+----
+
 include::../common/create-dp.adoc[leveloffset=+1]

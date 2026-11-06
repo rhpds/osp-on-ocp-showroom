@@ -1,1 +1,220 @@
-include::../common/install-operators.adoc[leveloffset=+1]
+= Install the OpenStack Operator (RHOSO 19.0 beta)
+
+[IMPORTANT]
+====
+This track installs the *RHOSO 19.0 beta* build. The beta is not published on
+`registry.redhat.io`, so it is consumed from a mirror in `quay.io/redhat_emp1`:
+
+* catalog index — `quay.io/redhat_emp1/pnavarro-rhoso19-beta-index:latest`
+* operator and service images — `quay.io/redhat_emp1/pnavarro-rhoso19-beta/<image>`
+
+Two cluster-wide objects make this work: a *CatalogSource* so OLM can see the
+beta operator, and an *ImageDigestMirrorSet* so the nodes fetch every
+`registry.redhat.io/rhoso*` image from quay instead.
+====
+
+. Clone the Files Repo
++
+In the bastion terminal, clone the repo and change directory to the files that we will used later in the lab
++
+[source,bash,role=execute]
+----
+git clone https://github.com/rhpds/osp-on-ocp-showroom.git labrepo
+cd labrepo/content/files
+----
+
+== Give the cluster access to the beta images
+
+. If the quay repositories are *private*, store your quay credentials in the
+cluster-wide pull secret so every node can fetch the beta images. Skip this step
+if the repositories have been made public:
++
+[source,bash,role=execute]
+----
+oc get secret/pull-secret -n openshift-config \
+  --template='{{index .data ".dockerconfigjson" | base64decode}}' > /tmp/pull-secret.json
+
+oc registry login --registry=quay.io \
+  --auth-basic=<quay-user>:<quay-token> \
+  --to=/tmp/pull-secret.json
+
+oc set data secret/pull-secret -n openshift-config \
+  --from-file=.dockerconfigjson=/tmp/pull-secret.json
+
+rm -f /tmp/pull-secret.json
+----
++
+[NOTE]
+Updating the cluster-wide pull secret rolls the nodes through the Machine Config
+Operator. Wait for `oc get mcp` to report `UPDATED=True` before continuing.
+
+. Apply the *ImageDigestMirrorSet* so that every `registry.redhat.io/rhoso*`
+image resolves to the quay mirror:
++
+[source,bash,role=execute]
+----
+oc apply -f osp-ng-rhoso19-beta-idms.yaml
+----
++
+This rewrites `/etc/containers/registries.conf` on each node and restarts them
+one at a time. Follow the rollout and wait until it finishes:
++
+[source,bash,role=execute]
+----
+oc get mcp -w
+----
++
+Type Control + C once both pools report `UPDATED=True` and `UPDATING=False`.
+
+. Add the beta *CatalogSource*:
++
+[source,bash,role=execute]
+----
+oc apply -f osp-ng-rhoso19-beta-catalogsource.yaml
+----
+
+. Confirm the catalog pod is running and the operator is on offer:
++
+[source,bash,role=execute]
+----
+oc get pods -n openshift-marketplace -l olm.catalogSource=rhoso19-beta
+oc get packagemanifests -n openshift-marketplace | grep openstack-operator
+----
++
+.Sample Output
+----
+NAME                            CATALOG            AGE
+openstack-operator              RHOSO 19.0 beta    30s
+----
++
+[NOTE]
+If the catalog pod is in `ImagePullBackOff`, the quay repositories are private
+and the cluster has no credentials for them. Either make them public or create a
+pull secret in `openshift-marketplace` and reference it under `spec.secrets` in
+*osp-ng-rhoso19-beta-catalogsource.yaml*.
+
+== Install the operator
+
+. Create the *openstack-operators* project for the RHOSO operators:
++
+[source,bash,role=execute]
+----
+oc new-project openstack-operators
+----
+
+. Create the `openstack` project for the deployed RHOSO environment:
++
+[source,bash,role=execute]
+----
+oc new-project openstack
+----
+
+. Configure the **OperatorGroup and Subscription** for the **OpenStack Operator**
+from **files/osp-ng-openstack-operator-19beta.yaml**. It subscribes to channel
+*beta-v19.0* from the *rhoso19-beta* catalog:
++
+[source,bash,role=execute]
+----
+oc apply -f osp-ng-openstack-operator-19beta.yaml
+----
+
+. Install the operator using the Manual approval strategy. Confirm that an install plan has been created but not executed as it has not been approved. Type Control + C, to exit the wait command:
++
+[source,bash,role=execute]
+----
+oc get installplan -n openstack-operators -w
+----
+.Sample Output
+----
+NAME            CSV                          APPROVAL   APPROVED
+install-lfs4j   openstack-operator.v19.0.0   Manual     false
+----
+
+. Approve the installation of the operator by updating the approved field of the InstallPlan. You will need to replace <install-plan-id> with the NAME from the previous command:
++
+[source,bash,role=execute]
+----
+oc patch installplan <install-plan-id>  \
+    --namespace openstack-operators \
+    --type merge \
+    --patch '{"spec":{"approved":true}}'
+----
+
+. Initialize the operator:
++
+[source,bash,role=execute]
+----
+oc apply -f osp-ng-openstack-operator-init.yaml
+----
+
+. Confirm that you have installed the Openstack Operator, *openstack-operator.openstack-operators*:
++
+[source,bash,role=execute]
+----
+oc get operators openstack-operator.openstack-operators
+----
+
+. Check that the CSV reports version *19.0.0*:
++
+[source,bash,role=execute]
+----
+oc get csv -n openstack-operators -o custom-columns=Name:.metadata.name,Version:.spec.version,Phase:.status.phase
+----
++
+.Sample Output
+----
+Name                         Version   Phase
+openstack-operator.v19.0.0   19.0.0    Succeeded
+----
+
+. Review the pods in the **openstack-operators** namespace:
++
+[source,bash,role=execute]
+----
+oc get pods -n openstack-operators
+----
+
+. If you run:
++
+[source, bash,role=execute]
+----
+oc get pods -n openstack-operators --sort-by=.metadata.creationTimestamp
+----
++
+You should see a list of completed pods and then the running openstack services pods.
+It should look like:
++
+.Sample Output
+----
+NAME                                                              READY   STATUS    RESTARTS   AGE
+barbican-operator-controller-manager-d6967ff8d-nnznr              2/2     Running   0          3d
+cinder-operator-controller-manager-845dc559c8-7fjz2               2/2     Running   0          3d
+designate-operator-controller-manager-6cdf7c69df-lqdjc            2/2     Running   0          3d
+glance-operator-controller-manager-86ddd9797-cgfnj                2/2     Running   0          3d
+heat-operator-controller-manager-58598d9cc5-mlk8t                 2/2     Running   0          3d
+horizon-operator-controller-manager-7dfb9f8c64-h7q26              2/2     Running   0          3d
+infra-operator-controller-manager-74f7f74cdf-69bqd                2/2     Running   0          3d
+ironic-operator-controller-manager-7cbbbff888-kvvxc               2/2     Running   0          3d
+keystone-operator-controller-manager-68f6bc7769-gpt2q             2/2     Running   0          3d
+manila-operator-controller-manager-7b974c64c5-j8scn               2/2     Running   0          3d
+mariadb-operator-controller-manager-7b9dd46bbf-x986p              2/2     Running   0          3d
+neutron-operator-controller-manager-7bd55db89f-9r7bp              2/2     Running   0          3d
+nova-operator-controller-manager-5d6dbd76c5-dj4vj                 2/2     Running   0          3d
+octavia-operator-controller-manager-7549fd44-jk9w9                2/2     Running   0          3d
+openstack-baremetal-operator-controller-manager-5655597bddnd9w7   2/2     Running   0          3d
+openstack-operator-controller-manager-84dd6d9877-nbzfw            2/2     Running   0          3d
+ovn-operator-controller-manager-7479894546-57b8b                  2/2     Running   0          3d
+placement-operator-controller-manager-57d864b49b-kn2s6            2/2     Running   0          3d
+rabbitmq-cluster-operator-8599cc8fbf-w858q                        1/1     Running   0          3d
+swift-operator-controller-manager-7d6f7cc6db-7h5dx                2/2     Running   0          3d
+telemetry-operator-controller-manager-6f7984877c-zzzq5            2/2     Running   0          3d
+----
+
+. If a controller pod is stuck in `ImagePullBackOff`, the mirror is not resolving.
+Check which image it wants and confirm the mapping exists in the IDMS:
++
+[source,bash,role=execute]
+----
+oc describe pod -n openstack-operators <pod-name> | grep -A2 "Failed to pull"
+oc get imagedigestmirrorset rhoso19-beta-quay -o yaml | grep -A2 <image-name>
+----

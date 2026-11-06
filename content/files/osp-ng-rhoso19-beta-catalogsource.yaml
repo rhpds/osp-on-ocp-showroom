@@ -1,0 +1,19 @@
+---
+# RHOSO 19.0 beta catalog, mirrored to quay.io/redhat_emp1.
+# If the quay repos are private, uncomment spec.secrets and create the
+# rhoso19-quay secret in openshift-marketplace first (see install-operators).
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: rhoso19-beta
+  namespace: openshift-marketplace
+spec:
+  sourceType: grpc
+  image: quay.io/redhat_emp1/pnavarro-rhoso19-beta-index:latest
+  displayName: RHOSO 19.0 beta
+  publisher: Red Hat OpenStack
+  # secrets:
+  #   - rhoso19-quay
+  updateStrategy:
+    registryPoll:
+      interval: 30m
