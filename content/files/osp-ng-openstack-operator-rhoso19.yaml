@@ -1,0 +1,34 @@
+---
+# RHOSO 19.0 beta catalog, operator group and subscription.
+# The beta is not published on registry.redhat.io, so the catalog index and all
+# operator images come from a mirror in quay.io/redhat_emp1.
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: openstack-operator-index
+  namespace: openstack-operators
+spec:
+  sourceType: grpc
+  # Credentials for the mirror; only needed while the quay repos are private.
+  secrets:
+    - "osp-operators-secret"
+  # adjust the repolink below to match your environment:
+  image: quay.io/redhat_emp1/pnavarro-rhoso19-beta-index:latest
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: openstack
+  namespace: openstack-operators
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: openstack-operator
+  namespace: openstack-operators
+spec:
+  name: openstack-operator
+  installPlanApproval: Manual
+  channel: beta-v19.0
+  source: openstack-operator-index
+  sourceNamespace: openstack-operators

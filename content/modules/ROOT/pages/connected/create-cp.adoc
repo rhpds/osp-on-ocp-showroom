@@ -1,1 +1,57 @@
+[IMPORTANT]
+====
+*RHOSO 19.0 beta — use the 19.0 control plane manifest*
+
+The page below applies *files/osp-ng-ctlplane-deploy.yaml*, which targets RHOSO
+18.0. For this track use *files/osp-ng-ctlplane-deploy-19beta.yaml* instead:
+
+[source,bash,role=execute]
+----
+oc create -f osp-ng-ctlplane-deploy-19beta.yaml
+----
+
+Everything else on this page — the NFS secret, the verification steps — is
+unchanged.
+====
+
+== What differs in the 19.0 manifest
+
+Three fields were dropped from the `OpenStackControlPlane` CRD in 19.0. The beta
+manifest is otherwise byte-for-byte identical to the 18.0 one:
+
+[cols="2,3"]
+|===
+| Removed field | Reason
+
+| `spec.nova.template.schedulerServiceTemplate`
+| Its `override` now accepts only `probes`, not `service`. The nova scheduler
+  exposes no API, so the LoadBalancer override no longer applies; the block is
+  empty once the override is gone.
+
+| `spec.heat.template.heatEngine.override`
+| `heatEngine` now accepts only `customServiceConfig` and
+  `customServiceConfigSecrets`. `replicas` is kept.
+
+| `spec.telemetry.template.logging.ipaddr`
+| Field retired from the logging section.
+|===
+
+Applying the 18.0 file on 19.0 fails with a strict decoding error naming exactly
+those three paths. To re-check the manifest against the CRDs installed on your
+cluster at any time:
+
+[source,bash,role=execute]
+----
+oc apply --dry-run=server --validate=strict -f osp-ng-ctlplane-deploy-19beta.yaml
+----
+
+A clean run reports `openstackcontrolplane.core.openstack.org/openstack-control-plane created (server dry run)`.
+Two warnings about `storageRequest: 500M` are expected — the lab deliberately
+uses small volumes.
+
+[NOTE]
+If you enable logging later, 19.0 adds a *required* `rsyslogQueueType` field
+under `spec.telemetry.template.logging`. It is not needed while
+`logging.enabled` is `false`, as shipped.
+
 include::../common/create-cp.adoc[leveloffset=+1]

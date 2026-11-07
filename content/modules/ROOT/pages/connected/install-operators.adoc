@@ -8,9 +8,11 @@ This track installs the *RHOSO 19.0 beta* build. The beta is not published on
 * catalog index — `quay.io/redhat_emp1/pnavarro-rhoso19-beta-index:latest`
 * operator and service images — `quay.io/redhat_emp1/pnavarro-rhoso19-beta/<image>`
 
-Two cluster-wide objects make this work: a *CatalogSource* so OLM can see the
-beta operator, and an *ImageDigestMirrorSet* so the nodes fetch every
-`registry.redhat.io/rhoso*` image from quay instead.
+Two things make this work: a *CatalogSource* so OLM can see the beta operator,
+and an *ImageDigestMirrorSet* so the nodes fetch every `registry.redhat.io/rhoso*`
+image from quay instead. While the quay repositories are private you also need
+credentials in two places — a secret for the catalog pod, and the cluster-wide
+pull secret for every other image.
 ====
 
 . Clone the Files Repo
@@ -22,78 +24,6 @@ In the bastion terminal, clone the repo and change directory to the files that w
 git clone https://github.com/rhpds/osp-on-ocp-showroom.git labrepo
 cd labrepo/content/files
 ----
-
-== Give the cluster access to the beta images
-
-. If the quay repositories are *private*, store your quay credentials in the
-cluster-wide pull secret so every node can fetch the beta images. Skip this step
-if the repositories have been made public:
-+
-[source,bash,role=execute]
-----
-oc get secret/pull-secret -n openshift-config \
-  --template='{{index .data ".dockerconfigjson" | base64decode}}' > /tmp/pull-secret.json
-
-oc registry login --registry=quay.io \
-  --auth-basic=<quay-user>:<quay-token> \
-  --to=/tmp/pull-secret.json
-
-oc set data secret/pull-secret -n openshift-config \
-  --from-file=.dockerconfigjson=/tmp/pull-secret.json
-
-rm -f /tmp/pull-secret.json
-----
-+
-[NOTE]
-Updating the cluster-wide pull secret rolls the nodes through the Machine Config
-Operator. Wait for `oc get mcp` to report `UPDATED=True` before continuing.
-
-. Apply the *ImageDigestMirrorSet* so that every `registry.redhat.io/rhoso*`
-image resolves to the quay mirror:
-+
-[source,bash,role=execute]
-----
-oc apply -f osp-ng-rhoso19-beta-idms.yaml
-----
-+
-This rewrites `/etc/containers/registries.conf` on each node and restarts them
-one at a time. Follow the rollout and wait until it finishes:
-+
-[source,bash,role=execute]
-----
-oc get mcp -w
-----
-+
-Type Control + C once both pools report `UPDATED=True` and `UPDATING=False`.
-
-. Add the beta *CatalogSource*:
-+
-[source,bash,role=execute]
-----
-oc apply -f osp-ng-rhoso19-beta-catalogsource.yaml
-----
-
-. Confirm the catalog pod is running and the operator is on offer:
-+
-[source,bash,role=execute]
-----
-oc get pods -n openshift-marketplace -l olm.catalogSource=rhoso19-beta
-oc get packagemanifests -n openshift-marketplace | grep openstack-operator
-----
-+
-.Sample Output
-----
-NAME                            CATALOG            AGE
-openstack-operator              RHOSO 19.0 beta    30s
-----
-+
-[NOTE]
-If the catalog pod is in `ImagePullBackOff`, the quay repositories are private
-and the cluster has no credentials for them. Either make them public or create a
-pull secret in `openshift-marketplace` and reference it under `spec.secrets` in
-*osp-ng-rhoso19-beta-catalogsource.yaml*.
-
-== Install the operator
 
 . Create the *openstack-operators* project for the RHOSO operators:
 +
@@ -109,13 +39,116 @@ oc new-project openstack-operators
 oc new-project openstack
 ----
 
-. Configure the **OperatorGroup and Subscription** for the **OpenStack Operator**
-from **files/osp-ng-openstack-operator-19beta.yaml**. It subscribes to channel
-*beta-v19.0* from the *rhoso19-beta* catalog:
+== Give the cluster access to the beta images
+
+[NOTE]
+Skip this whole section if the quay repositories have been made public.
+
+. Create the secret the *catalog pod* uses to pull the index image. Replace the
+user and token with your quay credentials:
 +
 [source,bash,role=execute]
 ----
-oc apply -f osp-ng-openstack-operator-19beta.yaml
+oc create secret docker-registry osp-operators-secret \
+  --docker-server=quay.io \
+  --docker-username=<quay-user> \
+  --docker-password=<quay-token> \
+  -n openstack-operators
+----
++
+This is the secret referenced under `spec.secrets` in
+*osp-ng-openstack-operator-rhoso19.yaml*. Without it the catalog pod ends in
+`ImagePullBackOff`.
+
+. Add the same credentials to the *cluster-wide pull secret*, so the kubelet can
+pull the operator and service images on every node:
++
+[source,bash,role=execute]
+----
+oc get secret/pull-secret -n openshift-config \
+  --template='{{index .data ".dockerconfigjson" | base64decode}}' > /tmp/pull-secret.json
+
+oc registry login --registry="quay.io/redhat_emp1" \
+  --auth-basic=<quay-user>:<quay-token> \
+  --to=/tmp/pull-secret.json
+
+oc set data secret/pull-secret -n openshift-config \
+  --from-file=.dockerconfigjson=/tmp/pull-secret.json
+
+rm -f /tmp/pull-secret.json
+----
++
+[WARNING]
+====
+Register the credentials under the *`quay.io/redhat_emp1`* key, never plain
+`quay.io`. The `quay.io` entry already present belongs to
+`openshift-release-dev` and is what the cluster uses to pull its own release
+images — overwriting it can break cluster updates. CRI-O picks the most specific
+match, so the two coexist.
+====
++
+Changing the pull secret rolls every node through the Machine Config Operator.
+Wait for it before continuing:
++
+[source,bash,role=execute]
+----
+oc get mcp -w
+----
++
+Type Control + C once the pools report `UPDATED=True` and `UPDATING=False`.
+
+. Apply the *ImageDigestMirrorSet* so that every `registry.redhat.io/rhoso*`
+image resolves to the quay mirror:
++
+[source,bash,role=execute]
+----
+oc apply -f osp-ng-rhoso19-beta-idms.yaml
+----
++
+This rewrites `/etc/containers/registries.conf` on each node and reboots them
+one at a time, so wait again:
++
+[source,bash,role=execute]
+----
+oc get mcp -w
+----
+
+. Confirm the mirrors landed on a node:
++
+[source,bash,role=execute]
+----
+oc debug node/<node-name> -q -- chroot /host grep -c "pnavarro-rhoso19-beta" /etc/containers/registries.conf
+----
++
+.Sample Output
+----
+87
+----
+
+== Install the operator
+
+. Create the **CatalogSource, OperatorGroup and Subscription** from
+**files/osp-ng-openstack-operator-rhoso19.yaml**. It subscribes to channel
+*beta-v19.0* from the beta catalog:
++
+[source,bash,role=execute]
+----
+oc apply -f osp-ng-openstack-operator-rhoso19.yaml
+----
+
+. Confirm the catalog is ready and the operator is on offer:
++
+[source,bash,role=execute]
+----
+oc get catalogsource -n openstack-operators \
+  -o custom-columns=NAME:.metadata.name,STATE:.status.connectionState.lastObservedState
+oc get packagemanifests -n openstack-operators | grep openstack-operator
+----
++
+.Sample Output
+----
+NAME                       STATE
+openstack-operator-index   READY
 ----
 
 . Install the operator using the Manual approval strategy. Confirm that an install plan has been created but not executed as it has not been approved. Type Control + C, to exit the wait command:
@@ -127,7 +160,7 @@ oc get installplan -n openstack-operators -w
 .Sample Output
 ----
 NAME            CSV                          APPROVAL   APPROVED
-install-lfs4j   openstack-operator.v19.0.0   Manual     false
+install-7rqk8   openstack-operator.v19.0.0   Manual     false
 ----
 
 . Approve the installation of the operator by updating the approved field of the InstallPlan. You will need to replace <install-plan-id> with the NAME from the previous command:
@@ -138,6 +171,35 @@ oc patch installplan <install-plan-id>  \
     --namespace openstack-operators \
     --type merge \
     --patch '{"spec":{"approved":true}}'
+----
+
+. Check that the CSV reports version *19.0.0*:
++
+[source,bash,role=execute]
+----
+oc get csv -n openstack-operators -o custom-columns=Name:.metadata.name,Version:.spec.version,Phase:.status.phase | grep openstack-operator
+----
++
+.Sample Output
+----
+Name                         Version   Phase
+openstack-operator.v19.0.0   19.0.0    Succeeded
+----
+
+. At this point only the *init* controller is running. This is expected: the
+bundle installs `openstack-operator-controller-init`, which creates the rest of
+the service operators once the `OpenStack` CR exists.
++
+[source,bash,role=execute]
+----
+oc get pods -n openstack-operators
+----
++
+.Sample Output
+----
+NAME                                                  READY   STATUS    RESTARTS   AGE
+openstack-operator-controller-init-85b48b46df-ngv5v   1/1     Running   0          3m
+openstack-operator-index-pfhfx                        1/1     Running   0          13m
 ----
 
 . Initialize the operator:
@@ -152,19 +214,6 @@ oc apply -f osp-ng-openstack-operator-init.yaml
 [source,bash,role=execute]
 ----
 oc get operators openstack-operator.openstack-operators
-----
-
-. Check that the CSV reports version *19.0.0*:
-+
-[source,bash,role=execute]
-----
-oc get csv -n openstack-operators -o custom-columns=Name:.metadata.name,Version:.spec.version,Phase:.status.phase
-----
-+
-.Sample Output
-----
-Name                         Version   Phase
-openstack-operator.v19.0.0   19.0.0    Succeeded
 ----
 
 . Review the pods in the **openstack-operators** namespace:
@@ -210,11 +259,25 @@ swift-operator-controller-manager-7d6f7cc6db-7h5dx                2/2     Runnin
 telemetry-operator-controller-manager-6f7984877c-zzzq5            2/2     Running   0          3d
 ----
 
-. If a controller pod is stuck in `ImagePullBackOff`, the mirror is not resolving.
-Check which image it wants and confirm the mapping exists in the IDMS:
-+
+== Troubleshooting
+
+If a pod is stuck in `ImagePullBackOff`, read the event message — it tells you
+which of the two problems you have:
+
 [source,bash,role=execute]
 ----
-oc describe pod -n openstack-operators <pod-name> | grep -A2 "Failed to pull"
+oc describe pod -n openstack-operators <pod-name> | grep -A3 "Failed to pull"
+----
+
+* `Mirrors also failed: [quay.io/redhat_emp1/...: unauthorized]` — the mirror is
+  resolving but the credentials are missing. Revisit the pull secret steps.
+* No mention of a mirror at all — the IDMS has not reached the nodes yet. Check
+  `oc get mcp` and that the node really has the entries in
+  `/etc/containers/registries.conf`.
+
+To confirm a specific mapping exists:
+
+[source,bash,role=execute]
+----
 oc get imagedigestmirrorset rhoso19-beta-quay -o yaml | grep -A2 <image-name>
 ----
