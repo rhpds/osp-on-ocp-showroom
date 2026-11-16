@@ -1,0 +1,642 @@
+apiVersion: dataplane.openstack.org/v1beta1
+kind: OpenStackDataPlaneNodeSet
+metadata:
+  name: openstack-edpm-compute-1
+  namespace: openstack
+spec:
+  env:
+    - name: ANSIBLE_FORCE_COLOR
+      value: "True"
+    - name: ANSIBLE_VERBOSITY
+      value: "2"
+  services:
+    - redhat
+    - download-cache
+    - bootstrap
+    - configure-network
+    - validate-network
+    - install-os
+    - configure-os
+    - ssh-known-hosts
+    - run-os
+    - reboot-os
+    - install-certs
+    - ovn
+    - neutron-metadata
+    - libvirt
+    - nova
+    - telemetry
+  networkAttachments:
+    - ctlplane
+  preProvisioned: true
+  nodes:
+      edpm-compute-1:
+        hostName: edpm-compute-1.sandbox-UUID-ocp4-cluster.svc.cluster.local
+        ansible:
+          ansibleHost: 172.22.0.100
+          ansibleVars:
+            fqdn_internal_api: edpm-compute-1.sandbox-UUID-ocp4-cluster.svc.cluster.local
+        networks:
+        - name: ctlplane
+          subnetName: subnet1
+          defaultRoute: false
+          fixedIP: 172.22.0.100
+        - name: internalapi
+          subnetName: subnet1
+          fixedIP: 172.17.0.100
+        - name: storage
+          subnetName: subnet1
+          fixedIP: 172.18.0.100
+        - name: tenant
+          subnetName: subnet1
+          fixedIP: 172.19.0.100
+        - name: external
+          subnetName: subnet1
+          fixedIP: 172.21.0.100
+  nodeTemplate:
+    ansibleSSHPrivateKeySecret: dataplane-ansible-ssh-private-key-secret
+    managementNetwork: ctlplane
+    ansible:
+      ansibleUser: cloud-user
+      ansibleVarsFrom:
+      - secretRef:
+          name: subscription-manager
+      - secretRef:
+          name: redhat-registry
+      ansibleVars:
+         # The compute image ships with no repository at all (empty
+         # /etc/yum.repos.d, no podman, no ansible-core), so these must be
+         # enabled for the redhat, download-cache and install-os services to
+         # find packages. These are the RHEL 10 equivalents of the four repos
+         # the 18.0 node set enables, minus rhoso-19.0: the beta RPM content is
+         # not on the CDN yet, the same reason the container images come from
+         # the quay mirror. Check with
+         #   subscription-manager repos --list | grep "Repo ID"
+         # on the compute before changing these.
+         rhc_release: 10.0
+         rhc_repositories:
+             - {name: "*", state: disabled}
+             - {name: "rhel-10-for-x86_64-baseos-rpms", state: enabled}
+             - {name: "rhel-10-for-x86_64-appstream-rpms", state: enabled}
+             # ceph-common, pulled by download-cache
+             - {name: "rhceph-9-tools-for-rhel-10-x86_64-rpms", state: enabled}
+             # openvswitch, needed later by the ovn service
+             - {name: "fast-datapath-for-rhel-10-x86_64-rpms", state: enabled}
+         # OVS package name on RHEL 10 / fast-datapath.
+         edpm_ovs_packages:
+             - openvswitch3.5
+         # Run on the node during bootstrap, before anything pulls an image.
+         # RHEL 10 ships /usr/share/containers/policy.json from containers-common,
+         # which demands a sigstore signature for registry.redhat.io. The policy is
+         # matched against the reference you ask for, not the mirror it is served
+         # from, so the unsigned pre-GA images fail with "A signature was required,
+         # but no signature exists". This writes root's own policy, keeping
+         # signature enforcement everywhere except the two pre-GA RHOSO namespaces
+         # (containers/image applies the most specific match). Drop this once the
+         # RHOSO 19.0 images are published and signed.
+         edpm_bootstrap_command: >-
+           mkdir -p /root/.config/containers &&
+           echo '{"default":[{"type":"insecureAcceptAnything"}],"transports":{"docker":{"registry.access.redhat.com":[{"type":"sigstoreSigned","keyPath":"/etc/pki/sigstore/SIGSTORE-redhat-release3","rekorPublicKeyPath":"/etc/pki/sigstore/REKOR-signing-key"}],"registry.redhat.io":[{"type":"sigstoreSigned","keyPath":"/etc/pki/sigstore/SIGSTORE-redhat-release3","rekorPublicKeyPath":"/etc/pki/sigstore/REKOR-signing-key"}],"registry.redhat.io/rhoso":[{"type":"insecureAcceptAnything"}],"registry.redhat.io/rhoso-operators":[{"type":"insecureAcceptAnything"}]},"docker-daemon":{"":[{"type":"insecureAcceptAnything"}]}}}'
+           > /root/.config/containers/policy.json
+         # Insights off: a throwaway lab host does not belong in the Insights
+         # inventory. "remediation: absent" also skips the rhc / rhc-worker-playbook
+         # install and the "Enable remediation" task, which fails on RHEL 10 with
+         # "Could not find the requested service rhcd". The whole dict must be
+         # given, the role reads rhc_insights as one value.
+         rhc_insights:
+           state: absent
+           remediation: absent
+         # nmstate instead of os-net-config: the os-net-config RPM lives in the
+         # RHOSO repository, which does not exist for the 19.0 beta, so
+         # download-cache fails with "No package os-net-config available". The
+         # nmstate path uses linux-system-roles and RHEL 10 packages instead.
+         # The template below is therefore in nmstate network_state format, not
+         # the os-net-config format used by the 18.0 file: edpm_network_config
+         # feeds it straight to fedora.linux_system_roles.network.
+         edpm_network_config_tool: nmstate
+         edpm_network_config_template: |
+           ---
+           {% set mtu_list = [ctlplane_mtu] %}
+           {% for network in nodeset_networks %}
+           {{ mtu_list.append(lookup('vars', networks_lower[network] ~ '_mtu')) }}
+           {%- endfor %}
+           {% set min_viable_mtu = mtu_list | max %}
+           interfaces:
+           - name: enp1s0
+             type: ethernet
+             state: up
+             ipv4:
+               enabled: true
+               dhcp: true
+               auto-dns: false
+               auto-routes: true
+               auto-gateway: true
+             ipv6:
+               enabled: false
+           - name: enp2s0
+             type: ethernet
+             state: up
+             mtu: {{ ctlplane_mtu }}
+             ipv4:
+               enabled: true
+               dhcp: false
+               address:
+               - ip: {{ ctlplane_ip }}
+                 prefix-length: {{ ctlplane_cidr }}
+             ipv6:
+               enabled: false
+           - name: enp3s0
+             type: ethernet
+             state: up
+             mtu: {{ internalapi_mtu }}
+             ipv4:
+               enabled: true
+               dhcp: false
+               address:
+               - ip: {{ internalapi_ip }}
+                 prefix-length: {{ internalapi_cidr }}
+             ipv6:
+               enabled: false
+           - name: enp4s0
+             type: ethernet
+             state: up
+             mtu: {{ min_viable_mtu }}
+             ipv4:
+               enabled: true
+               dhcp: false
+               address:
+               - ip: {{ storage_ip }}
+                 prefix-length: {{ storage_cidr }}
+             ipv6:
+               enabled: false
+           - name: enp5s0
+             type: ethernet
+             state: up
+             mtu: {{ tenant_mtu }}
+             ipv4:
+               enabled: true
+               dhcp: false
+               address:
+               - ip: {{ tenant_ip }}
+                 prefix-length: {{ tenant_cidr }}
+             ipv6:
+               enabled: false
+           - name: enp7s0
+             type: ethernet
+             state: up
+             mtu: 1500
+             ipv4:
+               enabled: false
+             ipv6:
+               enabled: false
+           - name: br-ex
+             type: ovs-bridge
+             state: up
+             bridge:
+               options:
+                 stp: false
+               port:
+               - name: enp7s0
+               - name: br-ex
+           - name: br-ex
+             type: ovs-interface
+             state: up
+             mtu: 1500
+             ipv4:
+               enabled: false
+             ipv6:
+               enabled: false
+           dns-resolver:
+             config:
+               server: {{ ctlplane_dns_nameservers }}
+               search:
+               - {{ dns_search_domains }}
+           # The lab defines no host routes (all *_host_routes are empty). If you
+           # add any, express them here as an nmstate "routes: config:" list, not
+           # as the os-net-config per-interface "routes:" key.
+         edpm_network_config_hide_sensitive_logs: false
+          #
+          # These vars are for the network config templates themselves and are
+          # considered EDPM network defaults (for all computes).
+         neutron_physical_bridge_name: br-ex
+         edpm_ovn_bridge_mappings: ["datacentre:br-ex"]
+         ctlplane_host_routes: []
+         ctlplane_subnet_cidr: 24
+         dns_search_domains: sandbox-UUID-ocp4-cluster.svc.cluster.local
+         ctlplane_mtu: 1500
+         external_mtu: 1500
+         external_cidr: '24'
+         external_host_routes: []
+         internalapi_mtu: 1500
+         internalapi_cidr: '24'
+         internalapi_host_routes: []
+         storage_mtu: 1500
+         storage_cidr: '24'
+         storage_host_routes: []
+         tenant_mtu: 1500
+         tenant_cidr: '24'
+         tenant_host_routes: []
+         # name of the first network interface on the compute node:
+         neutron_public_interface_name: enp1s0
+         # edpm_nodes_validation
+         edpm_nodes_validation_validate_controllers_icmp: false
+         edpm_nodes_validation_validate_gateway_icmp: false
+         gather_facts: false
+         enable_debug: false
+         edpm_bootstrap_release_version_package: []
+         # The role default, minus openstack-selinux: that one lives in the RHOSO
+         # repository, which does not exist for the 19.0 beta, and download-cache
+         # fails with "No package openstack-selinux available". Everything else
+         # here is real and available from the RHEL 10 repos, so do not empty the
+         # whole list: dropping ksmtuned alone makes bootstrap fail later with
+         # "Could not find the requested service ksm.service". Put
+         # openstack-selinux back once the RHOSO 19.0 repository is reachable -
+         # it carries the OpenStack SELinux policy and is not optional for a real
+         # deployment (see OSPRH-39038, OSPRH-39007).
+         edpm_bootstrap_packages_bootstrap:
+             - driverctl
+             - lvm2
+             - jq
+             - nftables
+             - NetworkManager
+             - python3-libselinux
+             - python3-pyyaml
+             - rsync
+             - tmpwatch
+             - sysstat
+             - iproute-tc
+             - ksmtuned
+             - systemd-container
+             - crypto-policies-scripts
+             - grubby
+             - sos
+         # SELinux state applied by the bootstrap service (one of: disabled,
+         # enforcing, permissive). "permissive" takes effect immediately and keeps
+         # logging AVC denials; "disabled" only edits /etc/selinux/config and needs
+         # a reboot. Set back to "enforcing" before treating a run as representative.
+         edpm_bootstrap_selinux_mode: permissive
+         # Mirror the pre-GA images on the EDPM nodes. The cluster IDMS only rewrites
+         # pulls made by CRI-O on the OpenShift nodes; EDPM hosts run podman and resolve
+         # registry.redhat.io themselves. edpm-ansible renders this to
+         # /etc/containers/registries.conf.d/20-edpm-podman-registries.conf
+         edpm_podman_registries:
+         - prefix: registry.redhat.io/rhoso/openstack-aodh-api-rhel10
+           location: registry.redhat.io/rhoso/openstack-aodh-api-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-aodh-api
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-barbican-api-rhel10
+           location: registry.redhat.io/rhoso/openstack-barbican-api-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-barbican-api
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-base-rhel10
+           location: registry.redhat.io/rhoso/openstack-base-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-base
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-ceilometer-central-rhel10
+           location: registry.redhat.io/rhoso/openstack-ceilometer-central-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-ceilometer-central
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-ceilometer-compute-rhel10
+           location: registry.redhat.io/rhoso/openstack-ceilometer-compute-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-ceilometer-compute
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-cinder-api-rhel10
+           location: registry.redhat.io/rhoso/openstack-cinder-api-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-cinder-api
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-cinder-backup-rhel10
+           location: registry.redhat.io/rhoso/openstack-cinder-backup-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-cinder-backup
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-cinder-scheduler-rhel10
+           location: registry.redhat.io/rhoso/openstack-cinder-scheduler-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-cinder-scheduler
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-cinder-volume-rhel10
+           location: registry.redhat.io/rhoso/openstack-cinder-volume-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-cinder-volume
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-cloudkitty-api-rhel10
+           location: registry.redhat.io/rhoso/openstack-cloudkitty-api-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-cloudkitty-api
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-designate-api-rhel10
+           location: registry.redhat.io/rhoso/openstack-designate-api-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-designate-api
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-designate-backend-bind9-rhel10
+           location: registry.redhat.io/rhoso/openstack-designate-backend-bind9-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-designate-backend-bind9
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-designate-central-rhel10
+           location: registry.redhat.io/rhoso/openstack-designate-central-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-designate-central
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-designate-worker-rhel10
+           location: registry.redhat.io/rhoso/openstack-designate-worker-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-designate-worker
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-frr-rhel10
+           location: registry.redhat.io/rhoso/openstack-frr-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-frr
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-glance-api-rhel10
+           location: registry.redhat.io/rhoso/openstack-glance-api-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-glance-api
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-heat-api-rhel10
+           location: registry.redhat.io/rhoso/openstack-heat-api-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-heat-api
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-heat-engine-rhel10
+           location: registry.redhat.io/rhoso/openstack-heat-engine-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-heat-engine
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-horizon-rhel10
+           location: registry.redhat.io/rhoso/openstack-horizon-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-horizon
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-ironic-api-rhel10
+           location: registry.redhat.io/rhoso/openstack-ironic-api-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-ironic-api
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-ironic-conductor-rhel10
+           location: registry.redhat.io/rhoso/openstack-ironic-conductor-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-ironic-conductor
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-ironic-neutron-agent-rhel10
+           location: registry.redhat.io/rhoso/openstack-ironic-neutron-agent-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-ironic-neutron-agent
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-keystone-rhel10
+           location: registry.redhat.io/rhoso/openstack-keystone-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-keystone
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-manila-api-rhel10
+           location: registry.redhat.io/rhoso/openstack-manila-api-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-manila-api
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-manila-scheduler-rhel10
+           location: registry.redhat.io/rhoso/openstack-manila-scheduler-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-manila-scheduler
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-manila-share-rhel10
+           location: registry.redhat.io/rhoso/openstack-manila-share-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-manila-share
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-mariadb-rhel10
+           location: registry.redhat.io/rhoso/openstack-mariadb-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-mariadb
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-memcached-rhel10
+           location: registry.redhat.io/rhoso/openstack-memcached-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-memcached
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-neutron-dhcp-agent-rhel10
+           location: registry.redhat.io/rhoso/openstack-neutron-dhcp-agent-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-neutron-dhcp-agent
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-neutron-metadata-agent-ovn-rhel10
+           location: registry.redhat.io/rhoso/openstack-neutron-metadata-agent-ovn-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-neutron-metadata-agent-ovn
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-neutron-ovn-agent-rhel10
+           location: registry.redhat.io/rhoso/openstack-neutron-ovn-agent-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-neutron-ovn-agent
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-neutron-server-rhel10
+           location: registry.redhat.io/rhoso/openstack-neutron-server-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-neutron-server
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-neutron-sriov-agent-rhel10
+           location: registry.redhat.io/rhoso/openstack-neutron-sriov-agent-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-neutron-sriov-agent
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-nova-api-rhel10
+           location: registry.redhat.io/rhoso/openstack-nova-api-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-nova-api
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-nova-compute-rhel10
+           location: registry.redhat.io/rhoso/openstack-nova-compute-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-nova-compute
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-nova-conductor-rhel10
+           location: registry.redhat.io/rhoso/openstack-nova-conductor-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-nova-conductor
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-nova-novncproxy-rhel10
+           location: registry.redhat.io/rhoso/openstack-nova-novncproxy-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-nova-novncproxy
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-nova-scheduler-rhel10
+           location: registry.redhat.io/rhoso/openstack-nova-scheduler-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-nova-scheduler
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-octavia-api-rhel10
+           location: registry.redhat.io/rhoso/openstack-octavia-api-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-octavia-api
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-octavia-worker-rhel10
+           location: registry.redhat.io/rhoso/openstack-octavia-worker-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-octavia-worker
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-openstackclient-rhel10
+           location: registry.redhat.io/rhoso/openstack-openstackclient-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-openstackclient
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-ovn-base-rhel10
+           location: registry.redhat.io/rhoso/openstack-ovn-base-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-ovn-base
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-ovn-controller-rhel10
+           location: registry.redhat.io/rhoso/openstack-ovn-controller-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-ovn-controller
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-ovn-nb-db-server-rhel10
+           location: registry.redhat.io/rhoso/openstack-ovn-nb-db-server-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-ovn-nb-db-server
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-ovn-northd-rhel10
+           location: registry.redhat.io/rhoso/openstack-ovn-northd-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-ovn-northd
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-ovn-sb-db-server-rhel10
+           location: registry.redhat.io/rhoso/openstack-ovn-sb-db-server-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-ovn-sb-db-server
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-placement-api-rhel10
+           location: registry.redhat.io/rhoso/openstack-placement-api-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-placement-api
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-rabbitmq-rhel10
+           location: registry.redhat.io/rhoso/openstack-rabbitmq-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-rabbitmq
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-redis-rhel10
+           location: registry.redhat.io/rhoso/openstack-redis-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-redis
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-rsyslog-rhel10
+           location: registry.redhat.io/rhoso/openstack-rsyslog-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-rsyslog
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-swift-account-rhel10
+           location: registry.redhat.io/rhoso/openstack-swift-account-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-swift-account
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-swift-container-rhel10
+           location: registry.redhat.io/rhoso/openstack-swift-container-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-swift-container
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-swift-object-rhel10
+           location: registry.redhat.io/rhoso/openstack-swift-object-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-swift-object
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-swift-proxy-server-rhel10
+           location: registry.redhat.io/rhoso/openstack-swift-proxy-server-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-swift-proxy-server
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-tempest-rhel10
+           location: registry.redhat.io/rhoso/openstack-tempest-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-tempest
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-unbound-rhel10
+           location: registry.redhat.io/rhoso/openstack-unbound-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-unbound
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-watcher-base-rhel10
+           location: registry.redhat.io/rhoso/openstack-watcher-base-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-watcher-base
+               insecure: false
+         - prefix: registry.redhat.io/rhoso/openstack-netutils-rhel10
+           location: registry.redhat.io/rhoso/openstack-netutils-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-netutils
+               insecure: false
+         - prefix: registry.redhat.io/rhoso-operators/openstack-network-exporter-rhel10
+           location: registry.redhat.io/rhoso-operators/openstack-network-exporter-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/openstack-network-exporter
+               insecure: false
+         - prefix: registry.redhat.io/rhoso-operators/prometheus-podman-exporter-rhel10
+           location: registry.redhat.io/rhoso-operators/prometheus-podman-exporter-rhel10
+           insecure: false
+           mirrors:
+             - location: quay.io/redhat_emp1/pnavarro-rhoso19-beta/prometheus-podman-exporter
+               insecure: false

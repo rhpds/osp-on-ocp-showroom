@@ -1,63 +1,207 @@
+[IMPORTANT]
+====
+*RHOSO 19.0 beta — use the 19.0 node set and RHEL 10 interface names*
+
+This track deploys the data plane on a *RHEL 10* compute. Two things differ from
+the page below:
+
+. Apply *files/osp-ng-dataplane-node-set-deploy-19beta.yaml* instead of
+  *osp-ng-dataplane-node-set-deploy.yaml*. The deployment CR,
+  *osp-ng-dataplane-deployment.yaml*, is unchanged.
+. RHEL 10 uses predictable interface names, so the static IP goes on *enp2s0*,
+  not `eth1`. Use the commands in the next section in place of the `nmcli` block
+  further down this page.
+====
+
+== Prepare the compute (RHEL 10)
+
+Two things must be done by hand on the compute before deploying: the ctlplane
+address, and letting subscription-manager write repository files.
+
+From the bastion, log in to the compute:
+
+[source,bash,role=execute,subs=attributes]
+----
+ssh -i /home/lab-user/.ssh/{guid}key.pem cloud-user@compute01
+----
+
+=== Network: the NICs are not called eth*
+
+RHEL 10 boots without `net.ifnames=0`, so the NICs are named `enp1s0` …
+`enp7s0`. Running the `eth1` commands from the shared page silently configures
+nothing, and the deployment then fails on its very first service with:
+
+----
+UNREACHABLE! ssh: connect to host 172.22.0.100 port 22: No route to host
+----
+
+Set the hostname and the ctlplane address on *enp2s0*:
+
+[source,bash,role=execute,subs=attributes]
+----
+sudo hostnamectl set-hostname edpm-compute-1.sandbox-{guid}-ocp4-cluster.svc.cluster.local
+sudo nmcli con add con-name "static-enp2s0" ifname enp2s0 type ethernet ip4 172.22.0.100/24 ipv4.dns "172.22.0.89"
+sudo nmcli con up "static-enp2s0"
+sudo nmcli con add type ethernet ifname enp1s0 con-name enp1s0-dhcp ipv4.method auto ipv6.method ignore
+sudo nmcli con up enp1s0-dhcp
+sudo nmcli con mod enp1s0-dhcp connection.stable-id "user-set"
+----
+
+Confirm the address is up:
+
+[source,bash,role=execute]
+----
+ip -4 -br addr show enp2s0
+----
+
+=== Repositories: allow subscription-manager to manage them
+
+The compute image ships with `manage_repos = 0`, so subscription-manager never
+writes `/etc/yum.repos.d/redhat.repo`. The host registers fine but ends up with
+no repository at all — no `podman`, no `ansible-core` — and the `redhat` service
+fails with:
+
+----
+No package rhc-worker-playbook available.
+No package ansible-core available.
+----
+
+The `rhc_repositories` variable in the node set cannot fix this on its own: the
+`rhc` role calls `rhsm_repository`, which needs repository management enabled
+first. Turn it on:
+
+[source,bash,role=execute]
+----
+sudo subscription-manager config --rhsm.manage_repos=1
+sudo subscription-manager refresh
+----
+
+Check that repositories now appear:
+
+[source,bash,role=execute]
+----
+sudo subscription-manager repos --list | grep "Repo ID" | head
+----
+
+[NOTE]
+If the list is still empty, the account behind the `subscription-manager` secret
+has no entitlement for RHEL 10 and the data plane cannot install packages.
+
+=== Image signatures: handled by the node set
+
+[NOTE]
+Nothing to do here — this is listed so the failure is recognisable. The node set
+writes the policy for you through `edpm_bootstrap_command`, which runs on the
+node during bootstrap.
+
+RHEL 10 ships `/usr/share/containers/policy.json` from `containers-common`, and
+it requires a sigstore signature for anything pulled from `registry.redhat.io`:
+
+[source,json]
+----
+"registry.redhat.io": [
+  { "type": "sigstoreSigned",
+    "keyPath": "/etc/pki/sigstore/SIGSTORE-redhat-release3",
+    "rekorPublicKeyPath": "/etc/pki/sigstore/REKOR-signing-key" }
+]
+----
+
+The policy is evaluated against the reference you *ask for*, not the location it
+is served from, so a mirrored copy is still checked against
+`registry.redhat.io`. The beta images in the quay mirror carry no such
+signature, and the `download-cache` service fails with:
+
+----
+Error: Source image rejected: A signature was required, but no signature exists
+----
+
+`edpm_bootstrap_command` in the node set writes `/root/.config/containers/policy.json`
+before anything pulls an image. That policy keeps signature enforcement
+everywhere except the two pre-GA RHOSO namespaces — containers/image applies the
+most specific match, so `ubi`, `openshift4` and the rest of `registry.redhat.io`
+stay verified.
+
+To check it by hand on the compute after a deployment:
+
+[source,bash,role=execute]
+----
+sudo podman pull registry.redhat.io/rhoso/openstack-ovn-controller-rhel10@sha256:537ee7b9befd72fd476bf61da0267d5ea3cd5c143679fcf79fd1f7aa1192eeba
+logout
+----
+
 [WARNING]
 ====
-*RHOSO 19.0 beta — the data plane needs RHEL 10 nodes*
-
-Every RHOSO 19.0 image is built on RHEL 10 (`...-rhel10`), but the compute host
-in this lab environment is *RHEL 9.4*, subscribed to the
-`rhoso-18.0-for-rhel-9-x86_64-rpms` repositories in
-*files/osp-ng-dataplane-node-set-deploy.yaml*.
-
-A RHEL 9 node cannot run the 19.0 data plane. Until the lab environment ships a
-RHEL 10 compute host, use this track for the *control plane only* and treat the
-steps below as 18.0 content.
-
-When RHEL 10 computes are available, the node set also needs:
-
-* `rhc_release` and `rhc_repositories` switched to the RHEL 10 and
-  `rhoso-19.0-for-rhel-10-x86_64-rpms` equivalents;
-* the registry mirrors from *files/osp-ng-dataplane-19beta-registries.yaml*
-  merged into `nodeTemplate.ansible.ansibleVars` — see below;
-* quay credentials added to the `redhat-registry` secret, because the beta
-  images live in `quay.io/redhat_emp1`, not `registry.redhat.io`:
-+
-[source,bash]
-----
-oc create secret generic redhat-registry \
-  --from-literal edpm_container_registry_logins='{"registry.redhat.io": {"<rh-user>": "<rh-token>"}, "quay.io": {"<quay-user>": "<quay-token>"}}' \
-  -n openstack
-----
-+
-The quay entry can be omitted once the mirror repositories are public.
+This is a temporary exception for unsigned pre-GA content, not a supported
+configuration. Drop the `edpm_bootstrap_command` variable once the RHOSO images
+are published and signed. The node set variable
+`edpm_container_signature_verification` does *not* help here: it defaults to
+`false` already, and what it controls is whether edpm-ansible *adds* sigstore
+policy for mirrors — not whether podman verifies.
 ====
 
-== Why the data plane needs its own mirror list
+The node set template uses the same names. This is the mapping from the 18.0
+file:
 
-The *ImageDigestMirrorSet* applied during operator installation only affects
-CRI-O on the OpenShift nodes. EDPM nodes are RHEL hosts running podman, so they
-resolve `registry.redhat.io/rhoso/...` on their own and would fail to pull the
-unpublished beta images.
+[cols="1,1,3"]
+|===
+| 18.0 | 19.0 beta | Network
 
-*files/osp-ng-dataplane-19beta-registries.yaml* carries the same mapping as the
-IDMS, expressed as the `edpm_podman_registries` Ansible variable (60 service
-images). edpm-ansible renders it to
-`/etc/containers/registries.conf.d/20-edpm-podman-registries.conf` on every EDPM
-node.
+| `eth0` | `enp1s0` | default route, DHCP
+| `eth1` | `enp2s0` | ctlplane
+| `eth2` | `enp3s0` | internalapi
+| `eth3` | `enp4s0` | storage
+| `eth4` | `enp5s0` | tenant
+| `eth6` | `enp7s0` | `br-ex` member
+|===
 
-Each image needs its own entry because the repository names differ on the two
+== What else differs in the 19.0 node set
+
+*`fqdn_internal_api` moved under `ansibleVars`.* In 19.0,
+`spec.nodes.<name>.ansible` accepts only `ansibleHost`, `ansiblePort`,
+`ansibleUser`, `ansibleVars` and `ansibleVarsFrom`. The 18.0 file fails strict
+validation with `unknown field "spec.nodes.edpm-compute-1.ansible.fqdn_internal_api"`.
+
+*Registry mirrors for the EDPM nodes.* The cluster `ImageDigestMirrorSet` only
+rewrites pulls made by CRI-O on the OpenShift nodes. EDPM hosts run podman and
+resolve `registry.redhat.io` themselves, so the node set carries 60
+`edpm_podman_registries` entries that edpm-ansible renders to
+`/etc/containers/registries.conf.d/20-edpm-podman-registries.conf`. Each image
+needs its own entry because the repository names differ between the two
 registries — `openstack-nova-compute-rhel10` upstream versus
-`openstack-nova-compute` in the mirror — so a single prefix rewrite of
-`registry.redhat.io/rhoso` would point at names that do not exist.
+`openstack-nova-compute` in the mirror.
 
-To use it, merge the file's contents into the `ansibleVars` block of your
-`OpenStackDataPlaneNodeSet` before deploying:
+Keep the `redhat-registry` secret: it carries `edpm_container_registry_logins`,
+which podman needs while the mirror repositories are private.
 
-[source,bash]
+*Repository subscription is disabled.* `rhc_release` and `rhc_repositories` are
+commented out — the RHEL 10 compute is not registered, and the values in the
+18.0 file are the RHEL 9 / RHOSO 18.0 ones. The `redhat` service stays in the
+service list: its playbook only runs the `rhc` role when `rhc_auth` is defined
+and non-empty, so it is a no-op without subscription credentials.
+
+*SELinux is permissive.* `edpm_bootstrap_selinux_mode: permissive` relaxes
+SELinux on the compute. Set it back to `enforcing` before treating a run as
+representative.
+
+== Deploy
+
+[source,bash,role=execute]
 ----
-# inspect the mappings
-head -20 osp-ng-dataplane-19beta-registries.yaml
-
-# then paste the edpm_podman_registries list under
-# spec.nodeTemplate.ansible.ansibleVars in your node set manifest
+cd ~/labrepo/content/files
+oc apply -f osp-ng-dataplane-node-set-deploy-19beta.yaml
+oc apply -f osp-ng-dataplane-deployment.yaml
 ----
+
+Follow the Ansible run:
+
+[source,bash,role=execute]
+----
+oc logs -l app=openstackansibleee -f --max-log-requests 10
+----
+
+[NOTE]
+An `OpenStackDataPlaneDeployment` is immutable. If a run fails, delete the
+deployment before retrying: `oc delete openstackdataplanedeployment
+openstack-edpm-compute-1 -n openstack`.
 
 include::../common/create-dp.adoc[leveloffset=+1]
