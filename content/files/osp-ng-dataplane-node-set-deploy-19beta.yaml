@@ -10,7 +10,6 @@ spec:
     - name: ANSIBLE_VERBOSITY
       value: "2"
   services:
-    - redhat
     - download-cache
     - bootstrap
     - configure-network

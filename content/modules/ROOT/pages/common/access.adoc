@@ -51,7 +51,7 @@ Map the Compute nodes to the Compute cell that they are connected to:
 
 [source,bash,role=execute]
 ----
-oc rsh nova-cell0-conductor-0 nova-manage cell_v2 discover_hosts --verbose -n openstack
+oc rsh -n openstack nova-cell0-conductor-0 nova-manage cell_v2 discover_hosts --verbose
 ----
 
 Configure the bastion with external network

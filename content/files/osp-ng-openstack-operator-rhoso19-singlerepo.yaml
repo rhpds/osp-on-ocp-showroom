@@ -1,0 +1,36 @@
+---
+# RHOSO 19.0 beta catalog, operator group and subscription - single-repository mirror.
+# Index and all images live as tags of quay.io/redhat_emp1/rhoso19_beta.
+# Pair this with osp-ng-rhoso19-beta-idms-singlerepo.yaml.
+#
+# Alternative layout (one repo per image): osp-ng-openstack-operator-rhoso19.yaml
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: openstack-operator-index
+  namespace: openstack-operators
+spec:
+  sourceType: grpc
+  # Credentials for the mirror; only needed while the quay repo is private.
+  secrets:
+    - "osp-operators-secret"
+  # adjust the repolink below to match your environment:
+  image: quay.io/redhat_emp1/rhoso19_beta:index
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: openstack
+  namespace: openstack-operators
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: openstack-operator
+  namespace: openstack-operators
+spec:
+  name: openstack-operator
+  installPlanApproval: Manual
+  channel: beta-v19.0
+  source: openstack-operator-index
+  sourceNamespace: openstack-operators
