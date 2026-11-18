@@ -64,37 +64,50 @@ spec:
       - secretRef:
           name: redhat-registry
       ansibleVars:
-         # The compute image ships with no repository at all (empty
-         # /etc/yum.repos.d, no podman, no ansible-core), so these must be
-         # enabled for the redhat, download-cache and install-os services to
-         # find packages. These are the RHEL 10 equivalents of the four repos
-         # the 18.0 node set enables, minus rhoso-19.0: the beta RPM content is
-         # not on the CDN yet, the same reason the container images come from
-         # the quay mirror. Check with
-         #   subscription-manager repos --list | grep "Repo ID"
-         # on the compute before changing these.
-         rhc_release: 10.0
-         rhc_repositories:
-             - {name: "*", state: disabled}
-             - {name: "rhel-10-for-x86_64-baseos-rpms", state: enabled}
-             - {name: "rhel-10-for-x86_64-appstream-rpms", state: enabled}
-             # ceph-common, pulled by download-cache
-             - {name: "rhceph-9-tools-for-rhel-10-x86_64-rpms", state: enabled}
-             # openvswitch, needed later by the ovn service
-             - {name: "fast-datapath-for-rhel-10-x86_64-rpms", state: enabled}
+         # The redhat service registers the host, nothing more.
+         #
+         # rhc_repositories is deliberately NOT set. subscription-manager leaves
+         # rhsm.conf with manage_repos = 0 after registering, so it never writes
+         # /etc/yum.repos.d/redhat.repo, and the role's "Configure repositories"
+         # task then rejects every entry - including the "*" wildcard - with
+         # "<id> is not a valid repository ID". The rhc role cannot fix this:
+         # neither the role nor the redhat_subscription module it calls knows
+         # about manage_repos (grep the collection, there are zero matches), and
+         # the repository task runs immediately after registration, leaving no
+         # window to flip it. Repositories are enabled from edpm_bootstrap_command
+         # below instead, which runs later, in the bootstrap service.
+         rhc_release: 10.2
          # OVS package name on RHEL 10 / fast-datapath.
          edpm_ovs_packages:
              - openvswitch3.5
-         # Run on the node during bootstrap, before anything pulls an image.
-         # RHEL 10 ships /usr/share/containers/policy.json from containers-common,
-         # which demands a sigstore signature for registry.redhat.io. The policy is
-         # matched against the reference you ask for, not the mirror it is served
-         # from, so the unsigned pre-GA images fail with "A signature was required,
-         # but no signature exists". This writes root's own policy, keeping
-         # signature enforcement everywhere except the two pre-GA RHOSO namespaces
-         # (containers/image applies the most specific match). Drop this once the
-         # RHOSO 19.0 images are published and signed.
+         # Runs on the node during bootstrap, after the redhat service has
+         # registered it and before anything installs a package or pulls an image.
+         # Two jobs:
+         #
+         # 1. Repositories. Registration leaves manage_repos = 0, so turn it back
+         #    on and enable the four repos by hand. These are the RHEL 10
+         #    equivalents of what the 18.0 node set enables, minus rhoso-19.0:
+         #    the beta RPM content is not on the CDN yet, the same reason the
+         #    container images come from the quay mirror. Confirm the IDs with
+         #    "subscription-manager repos --list" on the compute before editing.
+         #
+         # 2. Image signature policy. RHEL 10 ships /usr/share/containers/policy.json
+         #    from containers-common, which demands a sigstore signature for
+         #    registry.redhat.io. The policy is matched against the reference you
+         #    ask for, not the mirror it is served from, so the unsigned pre-GA
+         #    images fail with "A signature was required, but no signature exists".
+         #    This writes root's own policy, keeping signature enforcement
+         #    everywhere except the two pre-GA RHOSO namespaces (containers/image
+         #    applies the most specific match). Drop it once the RHOSO 19.0 images
+         #    are published and signed.
          edpm_bootstrap_command: >-
+           subscription-manager config --rhsm.manage_repos=1 &&
+           subscription-manager refresh &&
+           subscription-manager repos
+           --enable=rhel-10-for-x86_64-baseos-rpms
+           --enable=rhel-10-for-x86_64-appstream-rpms
+           --enable=rhceph-9-tools-for-rhel-10-x86_64-rpms
+           --enable=fast-datapath-for-rhel-10-x86_64-rpms &&
            mkdir -p /root/.config/containers &&
            echo '{"default":[{"type":"insecureAcceptAnything"}],"transports":{"docker":{"registry.access.redhat.com":[{"type":"sigstoreSigned","keyPath":"/etc/pki/sigstore/SIGSTORE-redhat-release3","rekorPublicKeyPath":"/etc/pki/sigstore/REKOR-signing-key"}],"registry.redhat.io":[{"type":"sigstoreSigned","keyPath":"/etc/pki/sigstore/SIGSTORE-redhat-release3","rekorPublicKeyPath":"/etc/pki/sigstore/REKOR-signing-key"}],"registry.redhat.io/rhoso":[{"type":"insecureAcceptAnything"}],"registry.redhat.io/rhoso-operators":[{"type":"insecureAcceptAnything"}]},"docker-daemon":{"":[{"type":"insecureAcceptAnything"}]}}}'
            > /root/.config/containers/policy.json
@@ -208,9 +221,12 @@ spec:
                enabled: false
            dns-resolver:
              config:
-               server: {{ ctlplane_dns_nameservers }}
-               search:
-               - {{ dns_search_domains }}
+               # Both variables may arrive as a string or as a list depending on
+               # the NetConfig, and nmstate rejects a nested sequence with
+               # "dns-resolver.config.search[0]: invalid type: sequence,
+               # expected a string". Normalise both to a flat list.
+               search: {{ [dns_search_domains] | flatten }}
+               server: {{ ctlplane_dns_nameservers if ctlplane_dns_nameservers is sequence and ctlplane_dns_nameservers is not string else [ctlplane_dns_nameservers] }}
            # The lab defines no host routes (all *_host_routes are empty). If you
            # add any, express them here as an nmstate "routes: config:" list, not
            # as the os-net-config per-interface "routes:" key.
